@@ -50,6 +50,20 @@
     return valid;
   }
 
+  emailInput.addEventListener('input', function () {
+    if (emailInput.value.trim()) {
+      clearError(emailInput, emailError);
+    }
+  });
+
+  nameInput.addEventListener('input', function () {
+    const name = nameInput.value.trim();
+
+    if (!name || name.length >= 2) {
+      clearError(nameInput, nameError);
+    }
+  });
+
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     formError.setAttribute('hidden', '');

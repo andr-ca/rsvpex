@@ -136,6 +136,17 @@ body {
   margin-bottom: 0.6rem;
 }
 
+@media (max-width: 599px) {
+  .form-row {
+    flex-direction: column;
+  }
+
+  .btn-submit {
+    width: 100%;
+    align-self: stretch;
+  }
+}
+
 .form-field { flex: 1; }
 
 .form-field label {
@@ -385,6 +396,25 @@ body {
 
 .footer-links a:hover { text-decoration: underline; }
 .footer-links a:focus {
+  outline: 2px solid var(--terracotta);
+  outline-offset: 2px;
+}
+
+/* ---------- Thank-you ---------- */
+.thankyou-wrap {
+  max-width: 480px;
+  margin: 6rem auto;
+  padding: 0 2rem;
+}
+
+.back-link {
+  font-size: 0.85rem;
+  color: var(--terracotta);
+  text-decoration: none;
+}
+
+.back-link:hover { text-decoration: underline; }
+.back-link:focus {
   outline: 2px solid var(--terracotta);
   outline-offset: 2px;
 }
