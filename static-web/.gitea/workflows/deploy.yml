@@ -1,0 +1,88 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: actrun1
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        run: |
+          echo "Repository: ${{ gitea.repository }}"
+          echo "SHA: ${{ gitea.sha }}"
+          echo "Event Name: ${{ gitea.event_name }}"
+
+          # Clean up any existing repo directory
+          rm -rf /tmp/repo
+
+          # Determine which branch/ref to checkout
+          if [ "${{ gitea.event_name }}" = "pull_request" ]; then
+            REF="${{ gitea.head_ref }}"
+            echo "PR detected - checking out PR branch: $REF"
+          else
+            REF="${{ gitea.ref_name }}"
+            echo "Push detected - checking out: $REF"
+          fi
+
+          # Clone with authentication using token (shallow clone for speed)
+          git clone --depth=1 --branch "$REF" "https://amalash:${{ secrets.REPO_TOKEN }}@pigit.andr.ca/${{ gitea.repository }}.git" /tmp/repo
+          cp -r /tmp/repo/* .
+          cp -r /tmp/repo/.gitignore . 2>/dev/null || true
+          ls -la
+
+      - name: Setup Node.js and Git
+        run: apk add --no-cache nodejs npm git
+
+      - name: Install Wrangler CLI
+        run: npm install -g wrangler
+
+      - name: Deploy to Cloudflare Pages (PR Preview)
+        if: gitea.event_name == 'pull_request'
+        run: |
+          echo "Files to deploy:"
+          ls -la | head -20
+          echo "---"
+          echo "Deploying PR preview to branch: pr-${{ gitea.event.pull_request.number }}"
+          wrangler pages deploy . --project-name=rsvpex-landing --branch=pr-${{ gitea.event.pull_request.number }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Deploy to Cloudflare Pages (Production)
+        if: gitea.event_name == 'push' && gitea.ref == 'refs/heads/main'
+        run: |
+          echo "Deploying to production after merge..."
+          wrangler pages deploy . --project-name=rsvpex-landing --branch=${{ gitea.ref_name }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Comment PR with Deployment URL
+        if: gitea.event_name == 'pull_request'
+        run: |
+          apk add --no-cache curl
+          PR_NUMBER=${{ gitea.event.pull_request.number }}
+          PREVIEW_URL="https://pr-${PR_NUMBER}.rsvpex-landing.pages.dev"
+
+          curl -X POST "${{ gitea.api_url }}/repos/${{ gitea.repository }}/issues/${PR_NUMBER}/comments" \
+            -H "Authorization: token ${{ secrets.GITEA_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"body\": \"🚀 **Deployment Preview Ready!**\n\nYour changes have been deployed to a preview environment:\n\n👉 [View Preview](${PREVIEW_URL})\n\nThis preview will be automatically updated as you push changes to this PR.\"}"
+
+      - name: Set deployment status
+        if: always()
+        run: |
+          if [ "${{ gitea.event_name }}" = "pull_request" ]; then
+            echo "✓ PR deployment preview ready"
+          elif [ "${{ gitea.ref }}" = "refs/heads/main" ]; then
+            echo "✓ Production deployment complete"
+          fi

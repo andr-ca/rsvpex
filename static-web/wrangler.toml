@@ -1,0 +1,26 @@
+# Cloudflare Pages configuration
+name = "rsvpex-landing"
+
+# Files and directories to exclude from deployment
+[env.production]
+exclude = [
+  ".git",
+  ".gitea",
+  ".github",
+  ".gitignore",
+  ".env",
+  ".env.sample",
+  ".specify",
+  ".claude",
+  "specs",
+  "node_modules",
+  "*.md",
+  "*.yml",
+  "*.yaml",
+  "*.lock",
+  "wrangler.toml",
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock"
+]

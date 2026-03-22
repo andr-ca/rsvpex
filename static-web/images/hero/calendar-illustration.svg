@@ -1,0 +1,100 @@
+<svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Calendar with checkmarks representing event RSVP management">
+  <!-- Background -->
+  <rect width="400" height="300" fill="#f9f9f9" rx="8"/>
+
+  <!-- Decorative circles -->
+  <circle cx="350" cy="30" r="40" fill="#FF6B6B" opacity="0.1"/>
+  <circle cx="50" cy="250" r="60" fill="#FF6B6B" opacity="0.05"/>
+
+  <!-- Main calendar -->
+  <g id="calendar">
+    <!-- Calendar shadow -->
+    <rect x="80" y="40" width="240" height="220" fill="#000" opacity="0.05" rx="8"/>
+
+    <!-- Calendar white background -->
+    <rect x="75" y="35" width="240" height="220" fill="white" rx="8" stroke="#eee" stroke-width="1"/>
+
+    <!-- Calendar header -->
+    <rect x="75" y="35" width="240" height="50" fill="#FF6B6B" rx="8"/>
+
+    <!-- Month/Year text -->
+    <text x="195" y="65" font-size="18" font-weight="bold" fill="white" text-anchor="middle" font-family="Arial, sans-serif">October 2025</text>
+
+    <!-- Day headers -->
+    <g font-size="12" fill="#999" font-family="Arial, sans-serif" font-weight="500">
+      <text x="95" y="105">Sun</text>
+      <text x="135" y="105">Mon</text>
+      <text x="175" y="105">Tue</text>
+      <text x="215" y="105">Wed</text>
+      <text x="255" y="105">Thu</text>
+      <text x="295" y="105">Fri</text>
+      <text x="335" y="105" text-anchor="middle">Sat</text>
+    </g>
+
+    <!-- Calendar dates -->
+    <g font-size="14" fill="#333" font-family="Arial, sans-serif" text-anchor="middle">
+      <!-- Week 1 -->
+      <text x="335" y="135">1</text>
+      <text x="375" y="135">2</text>
+
+      <!-- Week 2 -->
+      <text x="95" y="165">5</text>
+      <text x="135" y="165">6</text>
+      <text x="175" y="165">7</text>
+      <text x="215" y="165">8</text>
+      <text x="255" y="165">9</text>
+      <text x="295" y="165">10</text>
+      <text x="335" y="165">11</text>
+
+      <!-- Week 3 -->
+      <text x="95" y="195">12</text>
+      <text x="135" y="195">13</text>
+      <text x="175" y="195">14</text>
+      <text x="215" y="195">15</text>
+      <text x="255" y="195">16</text>
+
+      <!-- Important dates with highlights -->
+      <rect x="285" y="180" width="25" height="25" fill="#FF6B6B" opacity="0.2" rx="4"/>
+      <text x="295" y="195" font-weight="bold" fill="#FF6B6B">17</text>
+
+      <text x="335" y="195">18</text>
+    </g>
+
+    <!-- Checkmark on date 17 -->
+    <g transform="translate(295, 195)">
+      <circle cx="0" cy="0" r="14" fill="#FF6B6B"/>
+      <path d="M -5 0 L -2 3 L 4 -3" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- Additional checkmarks on other dates -->
+    <g transform="translate(255, 165)">
+      <path d="M -3 0 L -1 2 L 3 -2" stroke="#FF6B6B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <g transform="translate(175, 165)">
+      <path d="M -3 0 L -1 2 L 3 -2" stroke="#FF6B6B" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+
+  <!-- People icons representing guests -->
+  <g id="guests">
+    <!-- Person 1 -->
+    <circle cx="60" cy="230" r="6" fill="#FF6B6B"/>
+    <path d="M 55 245 Q 60 240 65 245" stroke="#FF6B6B" stroke-width="1.5" fill="none"/>
+
+    <!-- Person 2 -->
+    <circle cx="90" cy="235" r="6" fill="#FF6B6B" opacity="0.8"/>
+    <path d="M 85 250 Q 90 245 95 250" stroke="#FF6B6B" stroke-width="1.5" fill="none" opacity="0.8"/>
+
+    <!-- Person 3 -->
+    <circle cx="120" cy="238" r="6" fill="#FF6B6B" opacity="0.6"/>
+    <path d="M 115 253 Q 120 248 125 253" stroke="#FF6B6B" stroke-width="1.5" fill="none" opacity="0.6"/>
+  </g>
+
+  <!-- Plus icon (for adding guests) -->
+  <g id="add-icon">
+    <circle cx="345" cy="270" r="15" fill="white" stroke="#FF6B6B" stroke-width="2"/>
+    <line x1="345" y1="263" x2="345" y2="277" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round"/>
+    <line x1="338" y1="270" x2="352" y2="270" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round"/>
+  </g>
+</svg>

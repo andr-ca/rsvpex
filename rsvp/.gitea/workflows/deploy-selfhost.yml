@@ -1,0 +1,42 @@
+name: Deploy (self‑host, Proxmox)
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+env:
+  REGISTRY: ${{ secrets.REGISTRY_HOST }}
+  IMAGE: ${{ secrets.REGISTRY_IMAGE }}
+  TAG: ${{ gitea.ref_name }}
+jobs:
+  build_and_push:
+    runs-on: proxmox
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+      - name: Docker login (Gitea Container Registry)
+        run: |
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${REGISTRY} -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
+      - name: Build image
+        run: docker build -t ${REGISTRY}/${IMAGE}:${TAG} -f Dockerfile .
+      - name: Push image
+        run: docker push ${REGISTRY}/${IMAGE}:${TAG}
+  deploy_over_ssh:
+    runs-on: proxmox
+    needs: [build_and_push]
+    steps:
+      - name: SSH remote deploy
+        uses: https://github.com/appleboy/ssh-action@v1.2.1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script_stop: true
+          envs: REGISTRY,IMAGE,TAG
+          script: |
+            set -euxo pipefail
+            docker login ${REGISTRY} -u "${{ secrets.REGISTRY_USERNAME }}" -p "${{ secrets.REGISTRY_PASSWORD }}"
+            cd /opt/rsvp
+            docker compose pull
+            docker compose up -d
+            docker compose exec -T web pnpm drizzle:push
+            curl -fsS http://localhost:3000/rsvp/healthz

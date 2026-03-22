@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RSVPex - RSVP Management Coming Soon</title>
+  <meta name="description" content="Simple event RSVP management is coming soon. Join our waitlist for early access to beautiful, easy-to-use guest tracking.">
+  <link rel="canonical" href="https://rsvpex.com">
+
+  <!-- Open Graph (Facebook, LinkedIn, Pinterest) -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="RSVPex - RSVP Management Coming Soon">
+  <meta property="og:description" content="Simple event RSVP management is coming soon. Join our waitlist for early access.">
+  <meta property="og:image" content="https://rsvpex.com/images/og-preview.png">
+  <meta property="og:url" content="https://rsvpex.com">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="RSVPex - RSVP Management Coming Soon">
+  <meta name="twitter:description" content="Simple event RSVP management is coming soon. Join our waitlist for early access.">
+  <meta name="twitter:image" content="https://rsvpex.com/images/twitter-preview.png">
+  <meta name="twitter:site" content="@rsvpex">
+
+  <!-- Theme & Branding -->
+  <meta name="theme-color" content="#FF6B6B">
+
+  <!-- Favicon & Icons -->
+  <link rel="icon" type="image/svg+xml" href="/images/favicon/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/images/favicon/favicon.ico">
+  <link rel="apple-touch-icon" href="/images/favicon/apple-touch-icon.png">
+  <meta name="msapplication-TileColor" content="#FF6B6B">
+  <meta name="msapplication-TileImage" content="/images/favicon/mstile-144x144.png">
+
+  <!-- Critical CSS (inlined for performance) -->
+  <style>
+    /* CSS Custom Properties */
+    :root {
+      --color-primary: #FF6B6B;
+      --color-text: #1a1a1a;
+      --color-bg: #ffffff;
+      --color-light-gray: #f5f5f5;
+      --spacing: 1rem;
+      --max-width: 1200px;
+    }
+
+    /* Reset */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    /* Base Styles */
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--color-text);
+      background: var(--color-bg);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Container Utility */
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 1rem;
+    }
+
+    /* Header */
+    .header {
+      background: var(--color-bg);
+      border-bottom: 1px solid #eee;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem;
+      min-height: 60px;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: var(--color-primary);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 4rem 1rem;
+      text-align: center;
+    }
+
+    .hero .container {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .hero h1 {
+      font-size: 2rem;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .hero-subheadline {
+      font-size: 1.125rem;
+      color: #666;
+      margin-bottom: 2rem;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* Form Group Styles */
+    .form-group {
+      margin-bottom: 1rem;
+      text-align: left;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+
+    .form-group input[type="email"],
+    .form-group input[type="text"] {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input[type="email"]:focus,
+    .form-group input[type="text"]:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
+    }
+
+    .form-group.checkbox {
+      display: flex;
+      align-items: center;
+      text-align: left;
+      margin: 1.5rem 0;
+    }
+
+    .form-group.checkbox input[type="checkbox"] {
+      margin-right: 0.5rem;
+      cursor: pointer;
+      width: 20px;
+      height: 20px;
+      accent-color: var(--color-primary);
+    }
+
+    .form-group.checkbox label {
+      margin: 0;
+      cursor: pointer;
+      font-weight: 400;
+    }
+
+    /* Button Styles */
+    .btn {
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+      font-weight: 600;
+    }
+
+    .btn-primary {
+      background: var(--color-primary);
+      color: white;
+      width: 100%;
+      min-height: 44px;
+    }
+
+    .btn-primary:hover {
+      background: #e85555;
+    }
+
+    .btn-primary:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.3);
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    /* Error Styles */
+    .error {
+      color: #d32f2f;
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+      display: block;
+    }
+
+    .input--error {
+      border-color: #d32f2f;
+    }
+
+    [hidden] {
+      display: none;
+    }
+
+    /* Footer */
+    .footer {
+      background: var(--color-light-gray);
+      padding: 2rem 1rem;
+      margin-top: 4rem;
+      text-align: center;
+      font-size: 0.95rem;
+    }
+
+    .footer .container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .footer a {
+      color: var(--color-primary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+
+    .social-links {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .legal {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .copyright {
+      font-size: 0.875rem;
+      color: #999;
+    }
+
+    /* Main Content */
+    main {
+      flex: 1;
+    }
+
+    /* Responsive Design */
+    @media (min-width: 600px) {
+      .hero h1 {
+        font-size: 2.5rem;
+      }
+
+      .hero-subheadline {
+        font-size: 1.25rem;
+      }
+
+      .form-group input[type="email"],
+      .form-group input[type="text"] {
+        padding: 0.85rem;
+      }
+    }
+
+    @media (min-width: 900px) {
+      .hero {
+        padding: 6rem 1rem;
+      }
+
+      .hero h1 {
+        font-size: 3rem;
+      }
+
+      .hero-subheadline {
+        font-size: 1.375rem;
+      }
+    }
+
+    /* Print Styles */
+    @media print {
+      .hero form {
+        display: none;
+      }
+
+      body {
+        background: white;
+      }
+    }
+  </style>
+
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="/css/main.css">
+
+  <!-- Cloudflare Web Analytics (Optional - add token in deployment) -->
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": ""}'></script>
+
+  <!-- Structured Data (JSON-LD) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "RSVPex",
+    "description": "Simple event RSVP management solution. Coming soon.",
+    "applicationCategory": "BusinessApplication",
+    "offers": {
+      "@type": "Offer",
+      "price": "0"
+    },
+    "status": "Coming Soon",
+    "url": "https://rsvpex.com",
+    "image": {
+      "@type": "ImageObject",
+      "url": "https://rsvpex.com/images/og-preview.png",
+      "width": 1200,
+      "height": 630
+    },
+    "author": {
+      "@type": "Organization",
+      "name": "RSVPex"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <div class="logo">RSVPex</div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Section (User Story 1) -->
+    <section class="hero" id="hero-section">
+      <div class="container">
+        <div class="hero-content">
+          <h1>RSVP Management, Coming Soon</h1>
+          <p class="hero-subheadline">Simple event RSVP management is coming soon. Join our waitlist for early access to beautiful, easy-to-use guest tracking.</p>
+
+          <!-- Email Signup Form -->
+          <form action="https://api.web3forms.com/submit" method="POST" class="signup-form" id="waitlist-form">
+            <!-- Web3Forms Configuration -->
+            <input type="hidden" name="access_key" value="123b2260-0578-4fc4-8f03-6b9f4134d327">
+            <input type="hidden" name="redirect" value="/thank-you.html">
+            <input type="hidden" name="subject" value="New Beta Sign-up">
+
+            <!-- Email Field (Required) -->
+            <div class="form-group">
+              <label for="email">Email Address</label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                placeholder="your@email.com"
+                required
+                aria-required="true"
+                aria-describedby="email-error">
+              <span class="error" id="email-error" role="alert" hidden></span>
+            </div>
+
+            <!-- Name Field (Optional) -->
+            <div class="form-group">
+              <label for="name">Name (Optional)</label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                placeholder="Your name"
+                maxlength="100">
+            </div>
+
+            <!-- Subscribe Checkbox (Optional) -->
+            <div class="form-group checkbox">
+              <input
+                type="checkbox"
+                id="subscribe"
+                name="subscribe_newsletter"
+                value="yes">
+              <label for="subscribe">Keep me updated about the beta launch</label>
+            </div>
+
+            <!-- Honeypot Spam Protection (Hidden) -->
+            <input type="checkbox" name="botcheck" style="display: none;">
+
+            <!-- Submit Button -->
+            <button type="submit" class="btn btn-primary">Join the Waitlist</button>
+          </form>
+        </div>
+
+        <!-- Hero Illustration -->
+        <div class="hero-visual" id="hero-visual">
+          <img src="/images/hero/calendar-illustration.svg" alt="Calendar with checkmarks representing event RSVP management" width="300" height="250">
+        </div>
+      </div>
+    </section>
+
+    <!-- Benefits Section (User Story 2) -->
+    <section class="benefits" id="benefits-section">
+      <div class="container">
+        <h2>Why RSVPex?</h2>
+        <div class="benefits-grid" id="benefits-grid">
+          <!-- Benefit 1: Simple & Intuitive -->
+          <div class="benefit-card">
+            <svg class="benefit-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+            <h3>Simple & Intuitive</h3>
+            <p>Create beautiful guest lists and send invitations in minutes. No complicated setup or learning curve.</p>
+          </div>
+
+          <!-- Benefit 2: Real-time Updates -->
+          <div class="benefit-card">
+            <svg class="benefit-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="1"/><path d="M12 1v6m0 6v6m11-11h-6m-6 0H1m17.66-2.34l-4.24 4.24m-5.64 0l-4.24-4.24m11.32 11.32l-4.24-4.24m-5.64 0l-4.24 4.24"/>
+            </svg>
+            <h3>Real-time Updates</h3>
+            <p>See responses arrive instantly. Track who's coming, who's declining, and who hasn't responded yet.</p>
+          </div>
+
+          <!-- Benefit 3: Guest Management -->
+          <div class="benefit-card">
+            <svg class="benefit-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <h3>Guest Management</h3>
+            <p>Collect dietary restrictions, plus-one information, and special requests all in one place.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer (User Story 3) -->
+  <footer class="footer" id="footer">
+    <div class="container">
+      <p><strong>Questions?</strong> <a href="mailto:hello@rsvpex.com">Get in touch with our team</a></p>
+
+      <div class="social-links" id="social-links">
+        <a href="https://twitter.com/rsvpex" aria-label="Follow RSVPex on Twitter" title="Twitter">
+          <svg class="social-icon" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+            <path d="M23 3a10.9 10.9 0 01-3.14 1.53 4.48 4.48 0 00-7.86 3v1A10.66 10.66 0 013 4s-4 9 5 13a11.64 11.64 0 01-7 2s9 5 20 5a9.5 9.5 0 00-9-5.5c4.75 2.25 7-7 7-11.5a4.5 4.5 0 00-.08-.83A7.72 7.72 0 0023 3z"/>
+          </svg>
+        </a>
+        <a href="https://instagram.com/rsvpex" aria-label="Follow RSVPex on Instagram" title="Instagram">
+          <svg class="social-icon" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z" fill="none" stroke="currentColor" stroke-width="2"/>
+            <circle cx="17.5" cy="6.5" r="1.5" fill="currentColor"/>
+          </svg>
+        </a>
+      </div>
+
+      <div class="legal">
+        <a href="/privacy.html">Privacy Policy</a>
+        <span>•</span>
+        <a href="mailto:hello@rsvpex.com">Contact</a>
+      </div>
+
+      <p class="copyright">© 2025 RSVPex. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <!-- Form Validation & Enhancements -->
+  <script src="/js/main.js" defer></script>
+</body>
+</html>

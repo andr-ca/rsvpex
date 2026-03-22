@@ -1,0 +1,37 @@
+
+version: "3.9"
+services:
+  app:
+    image: ghcr.io/your-org/rsvp:latest # replace with your image or build
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3000:3000"       # cloudflared connects locally
+    depends_on:
+      - db
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/rsvp/healthz"]
+      interval: "30s"
+      timeout: "5s"
+      retries: 3
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rsvp
+      POSTGRES_USER: rsvp
+      POSTGRES_PASSWORD: change_me
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    command: ["postgres", "-c", "max_connections=100", "-c", "shared_buffers=256MB"]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+volumes:
+  pgdata:
+    driver: local

@@ -1,0 +1,11 @@
+
+# /etc/cloudflared/config.yml
+tunnel: TUNNEL_ID_GOES_HERE
+credentials-file: /etc/cloudflared/TUNNEL_ID_GOES_HERE.json
+
+ingress:
+  - hostname: rsvp.yourdomain.com
+    service: http://localhost:3000
+    originRequest:
+      httpHostHeader: rsvp.yourdomain.com
+  - service: http_status:404

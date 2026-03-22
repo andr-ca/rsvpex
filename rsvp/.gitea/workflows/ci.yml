@@ -1,0 +1,120 @@
+name: CI (Gitea Actions)
+on:
+  push:
+    branches: ["main", "release/*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint_typecheck:
+    runs-on: proxmox
+    steps:
+      - name: Checkout
+        uses: https://github.com/actions/checkout@v4
+      - name: Setup Node
+        uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+      - name: Setup PNPM
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.0.0 --activate
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Lint (ESLint + jsdoc)
+        run: pnpm lint
+      - name: Typecheck (TS)
+        run: pnpm typecheck
+
+  unit_tests:
+    runs-on: proxmox
+    needs: [lint_typecheck]
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+      - name: Setup PNPM
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.0.0 --activate
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Unit tests + coverage (global ≥80%)
+        env:
+          CI: "true"
+        run: pnpm test -- --coverage
+      - name: Unit tests + coverage (critical paths 100%)
+        env:
+          CI: "true"
+          CRITICAL_ONLY: "1"
+        run: pnpm test -- --coverage
+      - name: Upload coverage (global)
+        uses: https://github.com/actions/upload-artifact@v4
+        with:
+          name: coverage-global
+          path: coverage/lcov.info
+      - name: Upload coverage (critical)
+        uses: https://github.com/actions/upload-artifact@v4
+        with:
+          name: coverage-critical
+          path: coverage-critical/lcov.info
+
+  e2e_playwright:
+    runs-on: proxmox
+    needs: [unit_tests]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: rsvp_ci
+          POSTGRES_USER: rsvp
+          POSTGRES_PASSWORD: rsvp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U rsvp"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+      - uses: https://github.com/actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+      - name: Setup PNPM
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.0.0 --activate
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Prepare DB (Drizzle migrate)
+        env:
+          DATABASE_URL: postgres://rsvp:rsvp@localhost:5432/rsvp_ci
+        run: pnpm drizzle:push
+      - name: Build web
+        run: pnpm --filter ./apps/web build
+      - name: Run Playwright tests (with axe)
+        env:
+          DATABASE_URL: postgres://rsvp:rsvp@localhost:5432/rsvp_ci
+          REDIS_URL: redis://localhost:6379
+        run: |
+          npx playwright install --with-deps
+          pnpm --filter ./apps/web test:e2e
+
+  k6_load:
+    if: ${{ gitea.event_name == 'workflow_dispatch' }}
+    runs-on: proxmox
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+      - name: Run k6
+        uses: https://github.com/grafana/k6-action@v0.3.1
+        with:
+          filename: load-test.js
+        env:
+          RSVP_URL: ${{ secrets.RSVP_URL }}
