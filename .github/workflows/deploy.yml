@@ -1,0 +1,56 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wrangler
+        run: npm install -g wrangler
+
+      - name: Inject Web3Forms key
+        run: |
+          sed -i "s/{{WEB3FORMS_ACCESS_KEY}}/${{ secrets.WEB3FORMS_ACCESS_KEY }}/g" static-web/index.html
+
+      - name: Deploy (Production — push to main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: wrangler pages deploy static-web --project-name=rsvpex-landing --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy (PR Preview)
+        if: github.event_name == 'pull_request'
+        run: wrangler pages deploy static-web --project-name=rsvpex-landing --branch=pr-${{ github.event.pull_request.number }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Comment PR with preview URL
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            **Preview deployed:**
+            https://pr-${{ github.event.pull_request.number }}.rsvpex-landing.pages.dev
+
+            This preview updates automatically on each push to this PR.
