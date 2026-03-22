@@ -4,14 +4,10 @@
 
 /* ---------- Reset ---------- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-body {
-  font-family: system-ui, -apple-system, sans-serif;
-  font-size: 16px;
-  line-height: 1.6;
-  background: var(--cream);
-  color: var(--ink);
-  -webkit-font-smoothing: antialiased;
+html {}
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
 }
 
 /* ---------- Tokens ---------- */
@@ -25,6 +21,18 @@ body {
   --card-bg:    #fff;
   --pill-bg:    #e8e0d5;
   --max-w:      1100px;
+  --subhead:    #6b5d50;
+  --error:      #c0392b;
+  --attending:  #4a7c59;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  background: var(--cream);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ---------- Nav ---------- */
@@ -114,7 +122,7 @@ body {
 .hero-subheadline {
   font-family: system-ui, -apple-system, sans-serif;
   font-size: 0.85rem;
-  color: #6b5d50;
+  color: var(--subhead);
   line-height: 1.7;
   margin-bottom: 2rem;
 }
@@ -163,13 +171,13 @@ body {
 }
 
 .form-field input[aria-invalid="true"] {
-  border-color: #c0392b;
+  border-color: var(--error);
 }
 
 .field-error {
   display: block;
   font-size: 0.7rem;
-  color: #c0392b;
+  color: var(--error);
   margin-top: 0.25rem;
 }
 
@@ -190,7 +198,7 @@ body {
   align-self: flex-end;
 }
 
-.btn-submit:focus {
+.btn-submit:focus-visible {
   outline: 2px solid var(--terracotta);
   outline-offset: 2px;
 }
@@ -207,7 +215,7 @@ body {
 
 .form-submit-error {
   font-size: 0.75rem;
-  color: #c0392b;
+  color: var(--error);
   margin-top: 0.4rem;
 }
 
@@ -285,11 +293,11 @@ body {
   flex-shrink: 0;
 }
 
-.dot-green      { background: #4a7c59; }
+.dot-green      { background: var(--attending); }
 .dot-amber      { background: #c8a97a; }
 .dot-terracotta { background: var(--terracotta); }
 
-.hero-card-row--attending { color: #4a7c59; }
+.hero-card-row--attending { color: var(--attending); }
 
 .hero-card-footer {
   border-top: 1px solid var(--border);
