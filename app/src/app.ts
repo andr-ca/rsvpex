@@ -6,6 +6,12 @@ import rsvpSubmitRouter from './routes/rsvpSubmit'
 import rsvpPatchRouter from './routes/rsvpPatch'
 import thankYouRouter from './routes/rsvpThankYou'
 import icsRouter from './routes/rsvpIcs'
+import adminSetupRouter from './routes/adminSetup'
+import adminLoginRouter from './routes/adminLogin'
+import adminLogoutRouter from './routes/adminLogout'
+import adminPasswordResetRouter from './routes/adminPasswordReset'
+import adminDashboardRouter from './routes/adminDashboard'
+import { requireAdmin } from './middleware/requireAdmin'
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -21,5 +27,15 @@ app.route('/rsvp', icsRouter)
 app.route('/rsvp', rsvpFormRouter)
 app.route('/rsvp', rsvpSubmitRouter)
 app.route('/rsvp', rsvpPatchRouter)
+
+// Phase 4: Admin auth — public endpoints (no requireAdmin)
+app.route('/rsvp/admin', adminSetupRouter)
+app.route('/rsvp/admin', adminLoginRouter)
+app.route('/rsvp/admin', adminLogoutRouter)
+app.route('/rsvp/admin', adminPasswordResetRouter)
+
+// Phase 4: Protected admin routes (requireAdmin guards all /rsvp/admin/* below this line)
+app.use('/rsvp/admin/*', requireAdmin)
+app.route('/rsvp/admin', adminDashboardRouter)
 
 export default app
