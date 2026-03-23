@@ -157,3 +157,29 @@ export const notificationLog = sqliteTable('notification_log', {
 }, (table) => [
   uniqueIndex('uidx_notification_log_rsvp_type').on(table.rsvpId, table.notificationType),
 ])
+
+// ─── sessions ────────────────────────────────────────────────────────────────
+
+export const sessions = sqliteTable('sessions', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  adminUserId: text('admin_user_id').notNull().references(() => adminUsers.id, { onDelete: 'cascade' }),
+  expiresAt: text('expires_at').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+}, (table) => [
+  index('idx_sessions_admin_user').on(table.adminUserId),
+  index('idx_sessions_expires_at').on(table.expiresAt),
+])
+
+// ─── password_reset_tokens ────────────────────────────────────────────────────
+
+export const passwordResetTokens = sqliteTable('password_reset_tokens', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  adminUserId: text('admin_user_id').notNull().references(() => adminUsers.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: text('expires_at').notNull(),
+  usedAt: text('used_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+}, (table) => [
+  index('idx_prt_token_hash').on(table.tokenHash),
+  index('idx_prt_admin_user').on(table.adminUserId),
+])
