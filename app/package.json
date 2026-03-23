@@ -17,6 +17,7 @@
   "dependencies": {
     "@hono/zod-validator": "0.7.6",
     "@noble/hashes": "2.0.1",
+    "@touch4it/ical-timezones": "^1.9.0",
     "drizzle-orm": "0.45.1",
     "hono": "4.12.8",
     "ical-generator": "^10.1.0",
