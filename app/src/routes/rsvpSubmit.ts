@@ -1,0 +1,266 @@
+/**
+ * RSVP submission — POST /rsvp/:slug
+ *
+ * Middleware chain: turnstileVerify() → rsvpRateLimit() → handler
+ *
+ * @req PUB-03 — kids-mode fields (children_count, children_ages, siblings, parents)
+ * @req PUB-04 — standard fields (name, email/phone, adults, status, dietary, notes)
+ * @req PUB-05 — dietary max 10 entries
+ * @req CAP-01 — capacity enforcement via checkAndInsertRsvp
+ * @req CAP-04 — optional heuristic duplicate check
+ * @req CAP-05 — children_ages length must match children_count
+ * @req GAP-02 — 409 with action:resend_edit_link when duplicate detected
+ */
+
+import { Hono } from 'hono'
+import { z } from 'zod'
+import { turnstileVerify } from '../middleware/turnstile'
+import { rsvpRateLimit } from '../middleware/rateLimit'
+import { checkAndInsertRsvp } from '../domain/capacity'
+import { isDuplicate, isHeuristicDuplicate } from '../domain/duplicates'
+import { generateToken, generateIpHash } from '../domain/tokens'
+
+// ── Zod schema for RSVP form submission ───────────────────────────────────────
+
+const rsvpBodySchema = z.object({
+  name: z.string().min(1).max(200),
+  email: z.string().email().max(254).optional().nullable(),
+  phone: z.string().max(30).optional().nullable(),
+  status: z
+    .enum(['attending', 'not_attending', 'maybe'])
+    .optional()
+    .default('attending'),
+  adults: z.coerce.number().int().min(0).max(50).optional().default(1),
+  parents_count: z.coerce.number().int().min(0).max(50).optional().default(0),
+  siblings_count: z.coerce.number().int().min(0).max(50).optional().default(0),
+  children_count: z.coerce.number().int().min(0).max(50).optional().default(0),
+  children_ages: z.string().max(200).optional().default(''),
+  dietary_kind: z.union([z.string(), z.array(z.string())]).optional(),
+  dietary_value: z.union([z.string(), z.array(z.string())]).optional(),
+  notes: z.string().max(2000).optional().nullable(),
+  client_submitted_at: z.string().optional().nullable(),
+  t: z.string().optional().nullable(), // access token passthrough
+})
+
+type EventRow = {
+  id: string
+  slug: string
+  title: string
+  visibility: 'public' | 'unlisted' | 'private'
+  access_token: string | null
+  access_token_expires_at: string | null
+  opens_at: string | null
+  closes_at: string | null
+  status: 'draft' | 'published' | 'closed' | 'archived'
+  is_kids_event: number
+  max_guests_total: number | null
+  max_party_size_per_rsvp: number
+  enable_waitlist: number
+  enable_heuristic_dup_check: number
+  allow_status_choice: number
+}
+
+const rsvpSubmitRouter = new Hono<{ Bindings: Env }>()
+
+rsvpSubmitRouter.post(
+  '/:slug',
+  turnstileVerify(),
+  rsvpRateLimit(),
+  async (c) => {
+    const slug = c.req.param('slug')
+    const now = new Date().toISOString()
+
+    // ── Load event ─────────────────────────────────────────────────────────
+    const event = await c.env.DB.prepare(
+      `SELECT id, slug, title, visibility, access_token, access_token_expires_at,
+              opens_at, closes_at, status, is_kids_event, max_guests_total,
+              max_party_size_per_rsvp, enable_waitlist, enable_heuristic_dup_check,
+              allow_status_choice
+         FROM events
+        WHERE slug = ?
+          AND status = 'published'
+        LIMIT 1`,
+    )
+      .bind(slug)
+      .first<EventRow>()
+
+    if (!event) {
+      return c.json({ error: 'event_not_found' }, 404)
+    }
+
+    // ── Parse and validate body ────────────────────────────────────────────
+    const rawBody = await c.req.parseBody()
+    const parsed = rsvpBodySchema.safeParse(rawBody)
+
+    if (!parsed.success) {
+      return c.json({ error: 'validation_failed', issues: parsed.error.issues }, 400)
+    }
+
+    const body = parsed.data
+
+    // ── Visibility check ───────────────────────────────────────────────────
+    if (event.visibility === 'private') {
+      const t = body.t
+      if (!t || t !== event.access_token) {
+        return c.json({ error: 'access_denied' }, 403)
+      }
+      if (event.access_token_expires_at && event.access_token_expires_at < now) {
+        return c.json({ error: 'link_expired' }, 403)
+      }
+    }
+
+    // ── Time-window check ──────────────────────────────────────────────────
+    if (event.opens_at && event.opens_at > now) {
+      return c.json({ error: 'rsvp_not_open' }, 409)
+    }
+    if (event.closes_at && event.closes_at < now) {
+      return c.json({ error: 'rsvp_closed' }, 409)
+    }
+
+    // ── Contact validation: at least one of email or phone required ────────
+    const email = body.email || null
+    const phone = body.phone || null
+    if (!email && !phone) {
+      return c.json({ error: 'validation_failed', issues: [{ message: 'Email or phone is required' }] }, 400)
+    }
+
+    // ── CAP-05: children_ages length must match children_count ─────────────
+    let childrenAgesJson = '[]'
+    if (event.is_kids_event && body.children_count > 0 && body.children_ages) {
+      const agesParsed = body.children_ages
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map(Number)
+        .filter((n) => !isNaN(n) && n >= 0 && n <= 18)
+
+      if (agesParsed.length !== body.children_count) {
+        return c.json(
+          { error: 'validation_failed', issues: [{ message: 'children_ages count does not match children_count' }] },
+          400,
+        )
+      }
+      childrenAgesJson = JSON.stringify(agesParsed)
+    }
+
+    // ── PUB-05: dietary max 10 entries ─────────────────────────────────────
+    const dietaryKinds = Array.isArray(body.dietary_kind)
+      ? body.dietary_kind
+      : body.dietary_kind
+      ? [body.dietary_kind]
+      : []
+    const dietaryValues = Array.isArray(body.dietary_value)
+      ? body.dietary_value
+      : body.dietary_value
+      ? [body.dietary_value]
+      : []
+
+    if (dietaryKinds.length > 10) {
+      return c.json({ error: 'validation_failed', issues: [{ message: 'Maximum 10 dietary entries allowed' }] }, 400)
+    }
+
+    const dietary = dietaryKinds
+      .map((kind, i) => ({ kind: kind || '', value: dietaryValues[i] || '' }))
+      .filter((d) => d.kind)
+    const dietaryJson = JSON.stringify(dietary)
+
+    // ── Party-size cap per RSVP ────────────────────────────────────────────
+    const totalParty =
+      body.adults + body.parents_count + body.siblings_count + body.children_count
+
+    if (totalParty > event.max_party_size_per_rsvp) {
+      return c.json(
+        { error: 'validation_failed', issues: [{ message: `Party size exceeds the maximum of ${event.max_party_size_per_rsvp}` }] },
+        400,
+      )
+    }
+
+    // ── Exact duplicate check ──────────────────────────────────────────────
+    const dupResult = await isDuplicate(c.env.DB, event.id, email, phone)
+    if (dupResult.isDuplicate) {
+      return c.json(
+        { error: 'already_rsvped', action: 'resend_edit_link', rsvpToken: dupResult.rsvpToken },
+        409,
+      )
+    }
+
+    // ── Heuristic duplicate check (optional, per event) ───────────────────
+    if (event.enable_heuristic_dup_check) {
+      const heuristic = await isHeuristicDuplicate(c.env.DB, event.id, body.name, email, phone)
+      if (heuristic.isDuplicate) {
+        return c.json(
+          { error: 'already_rsvped', action: 'resend_edit_link', rsvpToken: heuristic.rsvpToken },
+          409,
+        )
+      }
+    }
+
+    // ── Determine RSVP status ──────────────────────────────────────────────
+    const rsvpStatus: 'attending' | 'not_attending' | 'maybe' = event.allow_status_choice
+      ? (body.status as 'attending' | 'not_attending' | 'maybe')
+      : 'attending'
+
+    // ── IP hashing ────────────────────────────────────────────────────────
+    const rawIp =
+      c.req.raw.headers.get('CF-Connecting-IP') ??
+      c.req.raw.headers.get('X-Forwarded-For') ??
+      null
+    const ipHash = rawIp ? await generateIpHash(rawIp) : null
+    const userAgent = c.req.raw.headers.get('User-Agent') ?? null
+
+    // ── Atomic capacity check + insert ────────────────────────────────────
+    const rsvpId = crypto.randomUUID()
+    const rsvpToken = generateToken()
+
+    const result = await checkAndInsertRsvp(c.env.DB, event.id, {
+      id: rsvpId,
+      eventId: event.id,
+      name: body.name,
+      email,
+      phone,
+      adults: body.adults,
+      parentsCount: body.parents_count,
+      siblingsCount: body.siblings_count,
+      childrenCount: body.children_count,
+      childrenAges: childrenAgesJson,
+      dietary: dietaryJson,
+      notes: body.notes ?? null,
+      answers: '{}',
+      status: rsvpStatus,
+      rsvpToken,
+      ipHash,
+      userAgent,
+      clientSubmittedAt: body.client_submitted_at ?? null,
+    })
+
+    // ── Capacity full ──────────────────────────────────────────────────────
+    if (!result.success) {
+      return c.html(renderCapacityFull(event.title), 409)
+    }
+
+    // ── Success: redirect to thank-you page ───────────────────────────────
+    return c.redirect(`/rsvp/thank-you?rid=${result.rsvpToken}`, 303)
+  },
+)
+
+// ── HTML renderer for capacity-full state ─────────────────────────────────────
+
+function renderCapacityFull(title: string): string {
+  const escaped = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Event Full — RSVPex</title>
+  <style>body{font-family:system-ui,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem}</style>
+</head>
+<body>
+  <h1>${escaped}</h1>
+  <p>We're sorry — this event has reached its maximum capacity and no waitlist is available.</p>
+  <p>Please contact the host directly if you believe this is an error.</p>
+</body>
+</html>`
+}
+
+export default rsvpSubmitRouter
