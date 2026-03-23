@@ -58,6 +58,7 @@ type EventRow = {
   enable_waitlist: number
   enable_heuristic_dup_check: number
   allow_status_choice: number
+  questions: string // JSON array
 }
 
 const rsvpSubmitRouter = new Hono<{ Bindings: Env }>()
@@ -75,7 +76,7 @@ rsvpSubmitRouter.post(
       `SELECT id, slug, title, visibility, access_token, access_token_expires_at,
               opens_at, closes_at, status, is_kids_event, max_guests_total,
               max_party_size_per_rsvp, enable_waitlist, enable_heuristic_dup_check,
-              allow_status_choice
+              allow_status_choice, questions
          FROM events
         WHERE slug = ?
           AND status = 'published'
@@ -164,6 +165,59 @@ rsvpSubmitRouter.post(
       .filter((d) => d.kind)
     const dietaryJson = JSON.stringify(dietary)
 
+    // ── GUEST-04: custom question answers ─────────────────────────────────
+    const questionDefs: Array<{
+      id: string
+      type: 'short_text' | 'long_text' | 'boolean' | 'single_select' | 'multi_select'
+      label: string
+      required?: boolean
+      options?: string[]
+    }> = JSON.parse(event.questions || '[]')
+
+    const answers: Record<string, string | string[]> = {}
+    const answerErrors: string[] = []
+
+    for (const q of questionDefs) {
+      const fieldName = `answer_${q.id}`
+      const rawValues = rawBody[fieldName]
+
+      let value: string | string[] | undefined
+
+      if (q.type === 'multi_select') {
+        value = Array.isArray(rawValues)
+          ? rawValues.map(String)
+          : rawValues
+          ? [String(rawValues)]
+          : []
+      } else {
+        value = Array.isArray(rawValues) ? rawValues[0] : rawValues ? String(rawValues) : undefined
+      }
+
+      // Required validation (D-12)
+      if (q.required) {
+        const isEmpty =
+          value === undefined ||
+          value === '' ||
+          (Array.isArray(value) && value.length === 0)
+        if (isEmpty) {
+          answerErrors.push(`"${q.label}" is required`)
+        }
+      }
+
+      if (value !== undefined) {
+        answers[q.id] = value
+      }
+    }
+
+    if (answerErrors.length > 0) {
+      return c.json(
+        { error: 'validation_failed', issues: answerErrors.map((message) => ({ message })) },
+        400,
+      )
+    }
+
+    const answersJson = JSON.stringify(answers)
+
     // ── Party-size cap per RSVP ────────────────────────────────────────────
     const totalParty =
       body.adults + body.parents_count + body.siblings_count + body.children_count
@@ -225,7 +279,7 @@ rsvpSubmitRouter.post(
       childrenAges: childrenAgesJson,
       dietary: dietaryJson,
       notes: body.notes ?? null,
-      answers: '{}',
+      answers: answersJson,
       status: rsvpStatus,
       rsvpToken,
       ipHash,
