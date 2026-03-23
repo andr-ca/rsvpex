@@ -1,0 +1,56 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rsvpex-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rsvpex-db",
+      "database_id": "PLACEHOLDER",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "SESSION_KV",
+      "id": "PLACEHOLDER"
+    }
+  ],
+
+  "queues": {
+    "producers": [
+      {
+        "binding": "NOTIFICATIONS_QUEUE",
+        "queue": "rsvpex-notifications"
+      },
+      {
+        "binding": "AUDIT_QUEUE",
+        "queue": "rsvpex-audit"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "rsvpex-notifications",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "rsvpex-notifications-dlq"
+      },
+      {
+        "queue": "rsvpex-audit",
+        "max_batch_size": 50,
+        "max_batch_timeout": 10,
+        "max_retries": 5,
+        "dead_letter_queue": "rsvpex-audit-dlq"
+      }
+    ]
+  },
+
+  "triggers": {
+    "crons": ["0 6 * * *"]
+  }
+}
