@@ -10,6 +10,7 @@ declare namespace Cloudflare {
 		DB: D1Database;
 		NOTIFICATIONS_QUEUE: Queue;
 		AUDIT_QUEUE: Queue;
+		TURNSTILE_SECRET_KEY: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

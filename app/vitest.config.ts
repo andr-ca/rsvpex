@@ -13,7 +13,11 @@ export default defineConfig(async () => {
         wrangler: { configPath: './wrangler.jsonc' },
         miniflare: {
           // Test-only binding for migrations setup
-          bindings: { TEST_MIGRATIONS: migrations },
+          bindings: {
+            TEST_MIGRATIONS: migrations,
+            // Bypass Turnstile verification in tests
+            TURNSTILE_SECRET_KEY: 'test-secret',
+          },
         },
       }),
     ],

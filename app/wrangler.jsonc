@@ -52,5 +52,11 @@
 
   "triggers": {
     "crons": ["0 6 * * *"]
+  },
+
+  // TURNSTILE_SECRET_KEY is a secret — set via `wrangler secret put TURNSTILE_SECRET_KEY`
+  // for production, or in .dev.vars for local development.
+  "vars": {
+    "TURNSTILE_SECRET_KEY": ""
   }
 }
