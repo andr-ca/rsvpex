@@ -126,28 +126,84 @@
 
 ---
 
+## Gap Requirements (Actionable — added to roadmap)
+
+Four gaps from `research/FEATURES.md` are actionable requirements added to the roadmap phases:
+
+- [ ] **GAP-01** (→ Phase 3): ICS file includes `VTIMEZONE` block matching the event's IANA timezone; changing the event timezone alters ICS UTC offsets correctly; file is valid per RFC 5545
+- [ ] **GAP-02** (→ Phase 2): When duplicate email/phone is detected (CAP-03), the 409 response offers to resend the edit link email; guests are not shown a bare error code
+- [ ] **GAP-04** (→ Phase 5): Admin edits to an RSVP's party size that would exceed `max_guests_total` trigger a transactional capacity recheck; the edit is blocked or offered a waitlist slot
+- [ ] **GAP-06** (→ Phase 2): Private event with expired `access_token_expires_at` returns 403 with message "Link expired"
+
+*GAP-03 (token revocation grace period implementation mechanism) and GAP-05 (edit-flow over-capacity UX) and GAP-07 (D1 healthz probe semantics) are addressed within existing requirements GUEST-05, PUB-10, and SEC-05 respectively — no separate requirement added.*
+
+---
+
 ## Traceability
 
-| Requirement | Area | Status |
-|-------------|------|--------|
-| SITE-01 – SITE-09 | Static site design | ✓ Validated |
-| FORM-01 – FORM-07 | Waitlist form | ✓ Validated |
-| CICD-01 – CICD-07 | GitHub Actions CI/CD | ✓ Validated |
-| PUB-01 – PUB-10 | Public RSVP form | Pending |
-| GUEST-01 – GUEST-05 | Guest data model | Pending |
-| CAP-01 – CAP-05 | Capacity & integrity | Pending |
-| ADMIN-01 – ADMIN-11 | Admin dashboard | Pending |
-| NOTIF-01 – NOTIF-05 | Notifications | Pending |
-| SEC-01 – SEC-06 | Security & observability | Pending |
-| I18N-01 | Internationalisation | Pending |
-| TEST-01 – TEST-03 | Testing & CI | Pending |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| SITE-01 – SITE-09 | Phase 0 (shipped) | ✓ Validated |
+| FORM-01 – FORM-07 | Phase 0 (shipped) | ✓ Validated |
+| CICD-01 – CICD-07 | Phase 0 (shipped) | ✓ Validated |
+| SEC-05 | Phase 1 | Pending |
+| PUB-01 | Phase 2 | Pending |
+| PUB-02 | Phase 2 | Pending |
+| PUB-03 | Phase 2 | Pending |
+| PUB-04 | Phase 2 | Pending |
+| PUB-05 | Phase 2 | Pending |
+| PUB-06 | Phase 2 | Pending |
+| PUB-07 | Phase 2 | Pending |
+| PUB-08 | Phase 2 | Pending |
+| CAP-01 | Phase 2 | Pending |
+| CAP-02 | Phase 2 | Pending |
+| CAP-03 | Phase 2 | Pending |
+| CAP-04 | Phase 2 | Pending |
+| CAP-05 | Phase 2 | Pending |
+| SEC-01 | Phase 2 | Pending |
+| SEC-02 | Phase 2 | Pending |
+| GAP-02 | Phase 2 | Pending |
+| GAP-06 | Phase 2 | Pending |
+| PUB-09 | Phase 3 | Pending |
+| PUB-10 | Phase 3 | Pending |
+| GUEST-01 | Phase 3 | Pending |
+| GUEST-02 | Phase 3 | Pending |
+| GUEST-03 | Phase 3 | Pending |
+| GUEST-04 | Phase 3 | Pending |
+| GUEST-05 | Phase 3 | Pending |
+| GAP-01 | Phase 3 | Pending |
+| ADMIN-01 | Phase 4 | Pending |
+| ADMIN-02 | Phase 4 | Pending |
+| ADMIN-11 | Phase 4 | Pending |
+| ADMIN-03 | Phase 5 | Pending |
+| ADMIN-04 | Phase 5 | Pending |
+| ADMIN-05 | Phase 5 | Pending |
+| ADMIN-06 | Phase 5 | Pending |
+| ADMIN-07 | Phase 5 | Pending |
+| ADMIN-10 | Phase 5 | Pending |
+| GAP-04 | Phase 5 | Pending |
+| ADMIN-08 | Phase 6 | Pending |
+| ADMIN-09 | Phase 6 | Pending |
+| NOTIF-01 | Phase 7 | Pending |
+| NOTIF-02 | Phase 7 | Pending |
+| NOTIF-03 | Phase 7 | Pending |
+| NOTIF-05 | Phase 7 | Pending |
+| NOTIF-04 | Phase 8 | Pending |
+| SEC-04 | Phase 8 | Pending |
+| I18N-01 | Phase 9 | Pending |
+| SEC-03 | Phase 10 | Pending |
+| SEC-06 | Phase 10 | Pending |
+| TEST-01 | Phase 11 | Pending |
+| TEST-02 | Phase 11 | Pending |
+| TEST-03 | Phase 11 | Pending |
 
 **Coverage:**
 - Validated: 23 requirements (static site — shipped)
-- v1 active: 40 requirements (RSVP app — roadmap pending)
-- Mapped to phases: 0 (roadmap not yet created)
-- Unmapped: 40 ⚠️
+- v1 active: 40 requirements (RSVP app)
+- Gap requirements added to roadmap: 4 (GAP-01, GAP-02, GAP-04, GAP-06)
+- Mapped to phases: 44/44 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-22*
-*Last updated: 2026-03-23 — CF Workers + D1 stack; static site requirements Validated*
+*Last updated: 2026-03-23 — CF Workers + D1 stack; static site requirements Validated; roadmap created (11 phases); 44/44 requirements mapped*
