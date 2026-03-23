@@ -1,0 +1,22 @@
+# RSVPex App — Wrangler local secrets reference
+# Copy to .dev.vars for local development (never commit .dev.vars)
+# Production: wrangler secret put <KEY>
+
+# ── Email (Resend) ───────────────────────────────────────
+RESEND_API_KEY=
+
+# ── SMS (Twilio) ─────────────────────────────────────────
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=
+
+# ── CAPTCHA (Cloudflare Turnstile) ───────────────────────
+TURNSTILE_SECRET_KEY=
+
+# ── Session security ─────────────────────────────────────
+# Random 32-byte hex string; used to sign session tokens
+SESSION_SECRET=
+
+# ── Password hashing ─────────────────────────────────────
+# Random 32-byte hex string; pepper applied to all argon2id hashes
+ARGON2_PEPPER=

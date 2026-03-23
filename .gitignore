@@ -1,2 +1,22 @@
 # Credentials and secrets
 documentation/.accounts
+.env
+app/.dev.vars
+
+# Build output
+dist/
+app/dist/
+
+# Dependencies
+node_modules/
+app/node_modules/
+
+# Wrangler local state
+app/.wrangler/
+
+# Drizzle migration metadata (local only)
+app/migrations/meta/
+
+# Test coverage
+coverage/
+app/coverage/
