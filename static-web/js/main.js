@@ -1,236 +1,92 @@
 'use strict';
 
-/**
- * RSVPex Landing Page - Form Validation & Enhancement
- * Progressive enhancement - works with or without JavaScript
- */
+(function () {
+  const form = document.getElementById('waitlist-form');
+  if (!form) return;
 
-// ================================================================
-// Email Validation Regex
-// ================================================================
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailInput = document.getElementById('email');
+  const nameInput  = document.getElementById('name');
+  const submitBtn  = document.getElementById('submit-btn');
+  const emailError = document.getElementById('email-error');
+  const nameError  = document.getElementById('name-error');
+  const formError  = document.getElementById('form-error');
 
-// ================================================================
-// Form References
-// ================================================================
-const waitlistForm = document.getElementById('waitlist-form');
-const emailInput = document.getElementById('email');
-const nameInput = document.getElementById('name');
-const emailErrorSpan = document.getElementById('email-error');
-const submitButton = waitlistForm?.querySelector('button[type="submit"]');
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// ================================================================
-// Validation Functions
-// ================================================================
-
-/**
- * Validate email format
- * @param {string} email - Email address to validate
- * @returns {boolean} True if valid email format
- */
-function validateEmail(email) {
-  return EMAIL_REGEX.test(email.trim());
-}
-
-/**
- * Validate name (optional but if provided, must be 2+ chars)
- * @param {string} name - Name to validate
- * @returns {boolean} True if valid or empty
- */
-function validateName(name) {
-  const trimmed = name.trim();
-  return trimmed === '' || trimmed.length >= 2;
-}
-
-/**
- * Show error message for a field
- * @param {HTMLElement} errorElement - The span to display error in
- * @param {string} message - Error message to display
- */
-function showError(errorElement, message) {
-  if (!errorElement) return;
-
-  errorElement.textContent = message;
-  errorElement.removeAttribute('hidden');
-
-  // Announce to screen readers
-  errorElement.setAttribute('role', 'alert');
-}
-
-/**
- * Clear error message for a field
- * @param {HTMLElement} errorElement - The span to clear
- */
-function clearError(errorElement) {
-  if (!errorElement) return;
-
-  errorElement.textContent = '';
-  errorElement.setAttribute('hidden', '');
-}
-
-/**
- * Validate entire form before submission
- * @returns {boolean} True if all required fields are valid
- */
-function validateForm() {
-  let isValid = true;
-
-  // Validate email (required)
-  if (!emailInput.value.trim()) {
-    showError(emailErrorSpan, 'Email address is required');
-    isValid = false;
-  } else if (!validateEmail(emailInput.value)) {
-    showError(emailErrorSpan, 'Please enter a valid email address');
-    isValid = false;
-  } else {
-    clearError(emailErrorSpan);
+  function setError(input, errorEl, message) {
+    input.setAttribute('aria-invalid', 'true');
+    errorEl.textContent = message;
+    errorEl.removeAttribute('hidden');
   }
 
-  // Validate name (optional but if provided must be valid)
-  if (!validateName(nameInput.value)) {
-    const nameError = nameInput.nextElementSibling;
-    if (nameError && nameError.classList.contains('error')) {
-      showError(nameError, 'Name must be at least 2 characters');
-      isValid = false;
+  function clearError(input, errorEl) {
+    input.removeAttribute('aria-invalid');
+    errorEl.textContent = '';
+    errorEl.setAttribute('hidden', '');
+  }
+
+  function validate() {
+    let valid = true;
+
+    const email = emailInput.value.trim();
+    if (!email) {
+      setError(emailInput, emailError, 'Email address is required.');
+      valid = false;
+    } else if (!EMAIL_RE.test(email)) {
+      setError(emailInput, emailError, 'Please enter a valid email address.');
+      valid = false;
+    } else {
+      clearError(emailInput, emailError);
     }
+
+    const name = nameInput.value.trim();
+    if (name && name.length < 2) {
+      setError(nameInput, nameError, 'Name must be at least 2 characters.');
+      valid = false;
+    } else {
+      clearError(nameInput, nameError);
+    }
+
+    return valid;
   }
 
-  return isValid;
-}
+  emailInput.addEventListener('input', function () {
+    if (emailInput.value.trim()) {
+      clearError(emailInput, emailError);
+    }
+  });
 
-/**
- * Sanitize input to prevent XSS
- * @param {string} input - User input to sanitize
- * @returns {string} Sanitized string
- */
-function sanitizeInput(input) {
-  const div = document.createElement('div');
-  div.textContent = input;
-  return div.innerHTML;
-}
+  nameInput.addEventListener('input', function () {
+    const name = nameInput.value.trim();
 
-/**
- * Handle form submission
- * @param {Event} event - Form submit event
- */
-function handleFormSubmit(event) {
-  // Validate form before submission
-  if (!validateForm()) {
-    event.preventDefault();
-    emailInput.focus();
-    return false;
-  }
+    if (!name || name.length >= 2) {
+      clearError(nameInput, nameError);
+    }
+  });
 
-  // Show loading state
-  if (submitButton) {
-    submitButton.classList.add('loading');
-    submitButton.disabled = true;
-    submitButton.textContent = 'Joining...';
-  }
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    formError.setAttribute('hidden', '');
 
-  // Form will submit to Web3Forms after validation passes
-  // No need to preventDefault - let form submit naturally
-}
+    if (!validate()) return;
 
-/**
- * Handle real-time email validation
- * Clear error when user starts typing a valid email
- */
-function handleEmailInput() {
-  if (emailInput.value.trim() && validateEmail(emailInput.value)) {
-    clearError(emailErrorSpan);
-  }
-}
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending…';
 
-/**
- * Handle real-time name validation
- */
-function handleNameInput() {
-  if (nameInput) {
-    const nameError = nameInput.nextElementSibling;
-    if (nameError && nameError.classList.contains('error')) {
-      if (validateName(nameInput.value)) {
-        clearError(nameError);
+    try {
+      const data = new FormData(form);
+      const res  = await fetch(form.action, { method: 'POST', body: data });
+
+      if (res.ok) {
+        window.location.href = '/thank-you.html';
+      } else {
+        throw new Error('Server error ' + res.status);
       }
+    } catch (err) {
+      formError.textContent = 'Something went wrong. Please try again.';
+      formError.removeAttribute('hidden');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Join Waitlist';
     }
-  }
-}
-
-// ================================================================
-// Accessibility Enhancements
-// ================================================================
-
-/**
- * Enhance form inputs with aria-invalid for screen readers
- */
-function enhanceAccessibility() {
-  if (emailInput) {
-    emailInput.addEventListener('invalid', (e) => {
-      e.preventDefault();
-      showError(emailErrorSpan, 'Please enter a valid email address');
-    });
-  }
-
-  // Add aria-live region for dynamic form feedback
-  if (!emailErrorSpan.getAttribute('aria-live')) {
-    emailErrorSpan.setAttribute('aria-live', 'polite');
-    emailErrorSpan.setAttribute('aria-atomic', 'true');
-  }
-}
-
-// ================================================================
-// Event Listeners
-// ================================================================
-
-if (waitlistForm) {
-  // Form submission
-  waitlistForm.addEventListener('submit', handleFormSubmit);
-
-  // Real-time email validation
-  if (emailInput) {
-    emailInput.addEventListener('blur', () => validateForm());
-    emailInput.addEventListener('input', handleEmailInput);
-  }
-
-  // Real-time name validation
-  if (nameInput) {
-    nameInput.addEventListener('blur', validateForm);
-    nameInput.addEventListener('input', handleNameInput);
-  }
-
-  // Enhance accessibility
-  enhanceAccessibility();
-}
-
-// ================================================================
-// Initialization
-// ================================================================
-
-/**
- * Initialize form on page load
- */
-function initForm() {
-  // Clear any cached form data (optional - remove this if you want to preserve data)
-  // if (waitlistForm) {
-  //   waitlistForm.reset();
-  // }
-
-  // Focus on email input when page loads (optional)
-  // if (emailInput) {
-  //   emailInput.focus();
-  // }
-}
-
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initForm);
-} else {
-  initForm();
-}
-
-// ================================================================
-// Export for testing (if using modules)
-// ================================================================
-
-// For potential unit tests (uncomment if using ES modules)
-// export { validateEmail, validateName, validateForm, sanitizeInput };
+  });
+}());

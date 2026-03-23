@@ -1,0 +1,90 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wrangler
+        run: npm install -g wrangler
+
+      - name: Inject Web3Forms key
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          WEB3FORMS_ACCESS_KEY: ${{ secrets.WEB3FORMS_ACCESS_KEY }}
+        run: |
+          if [ -z "$WEB3FORMS_ACCESS_KEY" ]; then
+            echo "WEB3FORMS_ACCESS_KEY is not set" >&2
+            exit 1
+          fi
+
+          ESCAPED_KEY=${WEB3FORMS_ACCESS_KEY//\\/\\\\}
+          ESCAPED_KEY=${ESCAPED_KEY//&/\\&}
+          ESCAPED_KEY=${ESCAPED_KEY//\//\\/}
+
+          sed -i "s/{{WEB3FORMS_ACCESS_KEY}}/${ESCAPED_KEY}/g" static-web/index.html
+
+      - name: Ensure Cloudflare Pages project exists
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          wrangler pages project list 2>/dev/null | grep -q 'rsvpex-landing' \
+            || wrangler pages project create rsvpex-landing --production-branch=main
+
+      - name: Deploy (Production — push to main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: wrangler pages deploy static-web --project-name=rsvpex-landing --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy (PR Preview)
+        # Same-repo PRs only; fork PRs do not receive repository secrets.
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: wrangler pages deploy static-web --project-name=rsvpex-landing --branch=pr-${{ github.event.pull_request.number }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Find existing preview comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        id: find-preview-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+          body-includes: https://pr-${{ github.event.pull_request.number }}.rsvpex-landing.pages.dev
+
+      - name: Comment PR with preview URL
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-preview-comment.outputs.comment-id }}
+          edit-mode: replace
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            **Preview deployed:**
+            https://pr-${{ github.event.pull_request.number }}.rsvpex-landing.pages.dev
+
+            This preview updates automatically on each push to this PR.
