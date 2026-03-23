@@ -11,6 +11,8 @@ declare namespace Cloudflare {
 		NOTIFICATIONS_QUEUE: Queue;
 		AUDIT_QUEUE: Queue;
 		TURNSTILE_SECRET_KEY: string;
+		RESEND_API_KEY?: string;
+		ADMIN_FROM_EMAIL?: string;
 	}
 }
 interface Env extends Cloudflare.Env {}
