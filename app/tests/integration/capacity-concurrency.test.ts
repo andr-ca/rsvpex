@@ -1,8 +1,9 @@
 /**
  * Concurrency integration test for RSVP capacity enforcement.
  *
- * Fires N concurrent POST requests against a real Worker running in Miniflare
- * (via SELF.fetch) and asserts that the final DB state matches expectations:
+ * Fires N concurrent POST requests against the Hono app handler (imported
+ * directly so it shares the same Miniflare D1 storage as `env.DB`) and
+ * asserts that the final DB state matches expectations:
  * - Exactly 1 attending when capacity=1, waitlist disabled
  * - Exactly 1 attending + N-1 waitlisted when capacity=1, waitlist enabled
  *
@@ -10,8 +11,9 @@
  * @req CAP-02 — waitlist overflow must be correct count
  */
 
-import { SELF, env } from 'cloudflare:test'
+import { env } from 'cloudflare:test'
 import { describe, it, expect } from 'vitest'
+import app from '../../src/app'
 
 async function seedEvent(
   db: D1Database,
@@ -37,22 +39,29 @@ async function seedEvent(
   return { id, slug }
 }
 
-function makeRsvpBody(i: number): URLSearchParams {
+function makeRsvpBody(i: number): string {
   const body = new URLSearchParams()
   body.set('name', `Guest ${i}`)
   body.set('email', `guest${i}-${crypto.randomUUID()}@example.com`)
   body.set('adults', '1')
   body.set('status', 'attending')
-  body.set('cf-turnstile-response', 'bypassed') // bypass via test-secret
-  return body
+  // cf-turnstile-response not needed — TURNSTILE_SECRET_KEY='test-secret' bypasses it
+  return body.toString()
 }
 
 async function postRsvp(slug: string, i: number): Promise<Response> {
-  return SELF.fetch(`http://example.com/rsvp/${slug}`, {
+  // Use unique IPs so each request gets its own rate-limit bucket (limit is 5/min/IP)
+  const ip = `203.0.113.${i + 1}`
+  const request = new Request(`http://example.com/rsvp/${slug}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: makeRsvpBody(i).toString(),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'CF-Connecting-IP': ip,
+    },
+    body: makeRsvpBody(i),
   })
+  // Import app directly so it runs in the same isolate as env.DB (shared D1 storage)
+  return app.fetch(request, env)
 }
 
 async function countByStatus(db: D1Database, eventId: string): Promise<Record<string, number>> {
@@ -74,9 +83,8 @@ describe('Capacity concurrency — 20 parallel POSTs', () => {
     const statuses = responses.map((r) => r.status)
     const redirects = statuses.filter((s) => s === 303)
 
-    // Exactly 1 successful insert (redirect) — rest should be capacity-full (409) or rate-limited (429)
+    // Exactly 1 successful insert (redirect to thank-you) — rest capacity-full (409)
     expect(redirects).toHaveLength(1)
-    // The remaining 19 should not be 2xx
     const nonSuccess = statuses.filter((s) => s !== 303)
     expect(nonSuccess).toHaveLength(19)
 
@@ -89,14 +97,13 @@ describe('Capacity concurrency — 20 parallel POSTs', () => {
   it('capacity=1, waitlist enabled: exactly 1 attending + 19 waitlisted', async () => {
     const { id: eventId, slug } = await seedEvent(env.DB, { max_guests_total: 1, enable_waitlist: 1 })
 
-    // Use fewer concurrent requests to avoid KV rate-limit interference in test
     const responses = await Promise.all(
       Array.from({ length: 20 }, (_, i) => postRsvp(slug, i)),
     )
 
     const successStatuses = responses.map((r) => r.status).filter((s) => s === 303)
-    // All 20 should eventually result in a redirect (attending or waitlist both redirect)
-    expect(successStatuses.length).toBeGreaterThanOrEqual(1)
+    // All 20 should result in a redirect (attending or waitlist both redirect)
+    expect(successStatuses.length).toBe(20)
 
     // Verify DB state: exactly 1 attending, rest waitlisted
     const counts = await countByStatus(env.DB, eventId)

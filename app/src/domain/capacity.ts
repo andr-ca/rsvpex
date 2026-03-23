@@ -1,8 +1,10 @@
 /**
  * Capacity enforcement for RSVP submissions.
  *
- * Uses an explicit BEGIN IMMEDIATE transaction so concurrent Workers invocations
- * cannot both see capacity as available and both insert successfully.
+ * Uses a conditional INSERT … SELECT … WHERE to enforce the capacity cap atomically.
+ * D1 serializes writes at the API layer, so each statement executes in its own implicit
+ * transaction — no explicit BEGIN IMMEDIATE is needed (and D1 rejects raw transaction
+ * SQL statements when called from Workers).
  *
  * @req CAP-01 — enforce max_guests_total hard cap
  * @req CAP-02 — waitlist when enable_waitlist=true and event is full
@@ -35,7 +37,7 @@ export type CapacityResult =
   | { success: false; status: 'full' }
 
 /**
- * Atomically checks capacity and inserts the RSVP in a single D1 transaction.
+ * Atomically checks capacity and inserts the RSVP in a single D1 statement.
  *
  * Returns `{ success: true, status: 'attending', rsvpId, rsvpToken }` on normal insert.
  * Returns `{ success: true, status: 'waitlist', rsvpId, rsvpToken }` when full + waitlist enabled.
@@ -90,10 +92,10 @@ export async function checkAndInsertRsvp(
   //
   // The WHERE clause inside the SELECT prevents the insert when
   // current_total + party_size would exceed max_guests_total.
-  // Using BEGIN IMMEDIATE serializes concurrent writes.
+  // D1 serializes writes at the API layer so this single statement is atomic.
   const partySize = data.adults + data.parentsCount + data.siblingsCount + data.childrenCount
 
-  const conditionalInsert = db.prepare(
+  const insertResult = await db.prepare(
     `INSERT INTO rsvps
        (id, event_id, name, email, phone,
         adults, parents_count, siblings_count, children_count, children_ages,
@@ -118,19 +120,9 @@ export async function checkAndInsertRsvp(
     data.ipHash, data.userAgent, data.clientSubmittedAt,
     // WHERE clause bindings
     eventId, eventId, partySize, eventId,
-  )
+  ).run()
 
-  // Execute inside a serializing transaction.
-  const txResult = await db.batch([
-    db.prepare('BEGIN IMMEDIATE'),
-    conditionalInsert,
-    db.prepare('COMMIT'),
-  ])
-
-  // txResult[1] is the result for the conditional INSERT statement.
-  const insertMeta = txResult[1].meta
-
-  if (insertMeta.changes > 0) {
+  if (insertResult.meta.changes > 0) {
     // Row was inserted as 'attending'.
     return { success: true, status: 'attending', rsvpId: data.id, rsvpToken: data.rsvpToken }
   }
