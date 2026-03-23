@@ -13,6 +13,7 @@
  */
 
 import { Hono } from 'hono'
+import { getRsvpByToken } from '../domain/rsvpEdit'
 
 const rsvpFormRouter = new Hono<{ Bindings: Env }>()
 
@@ -37,6 +38,23 @@ type EventRow = {
   locale: string
   start_at: string
   location_text: string | null
+}
+
+type RsvpEditRow = {
+  id: string
+  event_id: string
+  name: string
+  email: string | null
+  phone: string | null
+  adults: number
+  parents_count: number
+  siblings_count: number
+  children_count: number
+  dietary: string
+  notes: string | null
+  answers: string
+  status: string
+  rsvp_token: string
 }
 
 rsvpFormRouter.get('/:slug', async (c) => {
@@ -84,10 +102,107 @@ rsvpFormRouter.get('/:slug', async (c) => {
   }
 
   // ── Happy path: render form ───────────────────────────────────────────────
+  // ── Edit mode: prefill form from rid token ───────────────────────────────
+  const rid = c.req.query('rid') ?? null
+  if (rid) {
+    const rsvp = await getRsvpByToken(c.env.DB, rid)
+    if (!rsvp || rsvp.event_id !== event.id) {
+      return c.html(renderInvalidEditLink(), 403)
+    }
+    return c.html(renderEditForm(event, rsvp as RsvpEditRow, rid))
+  }
+
+  // ── New RSVP: render blank form ───────────────────────────────────────────
   return c.html(renderForm(event, accessToken))
 })
 
 // ── HTML renderers ────────────────────────────────────────────────────────────
+
+function renderInvalidEditLink(): string {
+  return page(
+    'Edit Link Invalid',
+    `<h1>Edit Link No Longer Valid</h1>
+     <p>This edit link is no longer valid. Contact the host for a new link.</p>`,
+  )
+}
+
+function renderEditForm(event: EventRow, rsvp: RsvpEditRow, rid: string): string {
+  const dietary: Array<{ kind: string; value: string }> = JSON.parse(rsvp.dietary || '[]')
+  const firstDietary = dietary[0] ?? null
+
+  return page(
+    event.title,
+    `
+    <div class="edit-banner">Editing your RSVP</div>
+    <h1>${escHtml(event.title)}</h1>
+
+    <form method="POST" action="/rsvp/${escHtml(rsvp.id)}" id="rsvp-form">
+      <input type="hidden" name="_method" value="PATCH">
+      <input type="hidden" name="rid" value="${escHtml(rid)}">
+
+      <fieldset>
+        <legend>Your Details</legend>
+        <label for="name">Full Name *</label>
+        <input id="name" name="name" type="text" required autocomplete="name" maxlength="200"
+               value="${escHtml(rsvp.name)}">
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" maxlength="254"
+               value="${escHtml(rsvp.email ?? '')}">
+
+        <label for="phone">Phone</label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="30"
+               value="${escHtml(rsvp.phone ?? '')}">
+      </fieldset>
+
+      <fieldset>
+        <legend>Your Party</legend>
+        <label for="adults">Adults *</label>
+        <input id="adults" name="adults" type="number" min="0" max="${event.max_party_size_per_rsvp}"
+               value="${rsvp.adults}" required>
+      </fieldset>
+
+      ${
+        event.allow_status_choice
+          ? `
+      <fieldset>
+        <legend>Attendance</legend>
+        <label><input type="radio" name="status" value="attending" ${rsvp.status === 'attending' ? 'checked' : ''}> Yes, I'll be there</label>
+        <label><input type="radio" name="status" value="maybe" ${rsvp.status === 'maybe' ? 'checked' : ''}> Maybe</label>
+        <label><input type="radio" name="status" value="not_attending" ${rsvp.status === 'not_attending' ? 'checked' : ''}> Sorry, can't make it</label>
+      </fieldset>
+      `
+          : ''
+      }
+
+      <fieldset>
+        <legend>Dietary Requirements</legend>
+        <div class="dietary-row">
+          <select name="dietary_kind[]">
+            <option value="">Select...</option>
+            ${['vegetarian', 'vegan', 'gluten_free', 'halal', 'kosher', 'nut_allergy', 'dairy_free', 'other']
+              .map(
+                (k) =>
+                  `<option value="${k}" ${firstDietary?.kind === k ? 'selected' : ''}>${k}</option>`,
+              )
+              .join('')}
+          </select>
+          <input type="text" name="dietary_value[]" placeholder="Details (optional)"
+                 value="${escHtml(firstDietary?.value ?? '')}">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Anything Else?</legend>
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" rows="3" maxlength="2000">${escHtml(rsvp.notes ?? '')}</textarea>
+      </fieldset>
+
+      <button type="submit">Save Changes</button>
+    </form>
+  `,
+  )
+}
 
 function renderNotFound(): string {
   return page('Event Not Found', `<h1>Event Not Found</h1><p>This event doesn't exist or is no longer available.</p>`)
