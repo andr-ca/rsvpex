@@ -1088,6 +1088,6 @@ Before running the workflow, configure these in the repo (Settings → Secrets �
 |--------|----------------|
 | `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard → My Profile → API Tokens → Create Token (Pages:Edit) |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → right sidebar on any zone page |
-| `WEB3FORMS_ACCESS_KEY` | The existing key `123b2260-0578-4fc4-8f03-6b9f4134d327` (currently hardcoded in old index.html) |
+| `WEB3FORMS_ACCESS_KEY` | Your Web3Forms access key — retrieve from the Web3Forms dashboard or reuse the key previously configured in the old landing page |
 
 The `CLOUDFLARE_ACCOUNT_ID` is new — the existing Gitea workflow did not use it. Wrangler requires it when authenticating with a scoped API token.
