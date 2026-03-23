@@ -14,8 +14,8 @@ See: `.planning/PROJECT.md`
 
 ## Current Focus
 
-**Phase:** 1 — Foundation  
-**Status:** Pending (not started)
+**Phase:** 3 — Thank-You, ICS & Edit Flow  
+**Status:** Pending — Phase 2 complete; ready to begin Phase 3
 
 ---
 
@@ -23,8 +23,8 @@ See: `.planning/PROJECT.md`
 
 | Phase | Name | Status | Completed |
 |-------|------|--------|-----------|
-| 1 | Foundation | Pending | — |
-| 2 | Public RSVP Form Core | Pending | — |
+| 1 | Foundation | Complete | 2026-03-23 |
+| 2 | Public RSVP Form Core | Complete | 2026-03-23 |
 | 3 | Thank-You, ICS & Edit Flow | Pending | — |
 | 4 | Admin Auth | Pending | — |
 | 5 | Admin Dashboard | Pending | — |
@@ -35,13 +35,13 @@ See: `.planning/PROJECT.md`
 | 10 | Observability & Security Hardening | Pending | — |
 | 11 | Testing & CI | Pending | — |
 
-**Progress:** ░░░░░░░░░░░░░░░░░░░░ 0/11 phases complete
+**Progress:** ████░░░░░░░░░░░░░░░░ 2/11 phases complete
 
 ---
 
 ## Active Work
 
-None — ready to begin Phase 1
+None — ready to begin Phase 3 (Thank-You, ICS & Edit Flow)
 
 ---
 
@@ -57,6 +57,7 @@ None
 |----------|-------|---------|
 | `@noble/hashes` argon2id (pure-JS, no WASM) | Phase 4 | Resolves Workers runtime WASM budget concern; benchmark required at OWASP minimum params (m=19456, t=2, p=1) |
 | D1 atomic transaction for capacity (no advisory locks) | Phase 2 | SQLite single-writer serialization; `INSERT ... WHERE count < capacity` pattern; `meta.changes === 0` for overbooking detection |
+| No `BEGIN IMMEDIATE` in Workers D1 | Phase 2 | D1 rejects raw transaction SQL (`BEGIN IMMEDIATE`) from Workers; conditional INSERT is serialized at D1 API layer |
 | KV sessions NOT used for admin auth (eventual consistency risk) | Phase 4 | Use D1 `sessions` table for session storage; KV stale-read window (up to 60s) is unacceptable for auth state |
 | Two Queues (`rsvpex-notifications`, `rsvpex-audit`) | Phase 7 | Separate DLQ configs and retry semantics; different failure modes per queue |
 | `notification_log` idempotency table | Phase 7 | Prevents duplicate emails from at-least-once Queue delivery; `INSERT OR IGNORE` on `UNIQUE (rsvp_id, notification_type)` |
@@ -64,6 +65,7 @@ None
 | Duplicate-detected UX (GAP-02) | Phase 2 | 409 + offer to resend edit link; not a bare error code |
 | Admin capacity guard on edits (GAP-04) | Phase 5 | Same D1 atomic pattern as public submit; admin is not exempt from capacity constraints |
 | Expired access token (GAP-06) | Phase 2 | 403 + "Link expired" message; not 404 or silent redirect |
+| `app.fetch(request, env)` for integration tests | Phase 2 | `SELF.fetch` / `exports.default.fetch` run in separate Miniflare isolate with separate D1 storage; direct app import shares storage |
 
 ---
 
@@ -72,12 +74,14 @@ None
 | Flag | Phase | Status |
 |------|-------|--------|
 | argon2id WASM CPU budget | Phase 4 | ✅ Resolved — use `@noble/hashes` pure-JS; benchmark at OWASP min params |
-| D1 `batch()` ≠ ACID rollback | Phase 2 | ✅ Resolved — use explicit `BEGIN/COMMIT` SQL for multi-table atomic writes |
+| D1 `batch()` ≠ ACID rollback | Phase 2 | ✅ Resolved — no `BEGIN/COMMIT` in Workers; D1 serializes single-statement writes |
+| D1 rejects `BEGIN IMMEDIATE` from Workers | Phase 2 | ✅ Resolved — use conditional `INSERT … WHERE` instead |
 | Queue at-least-once delivery | Phase 7 | ✅ Resolved — `notification_log` idempotency table with `INSERT OR IGNORE` |
 | KV eventual consistency for sessions | Phase 4 | ✅ Resolved — D1 `sessions` table instead of KV |
 | ICS pure-string generation (no `fs`) | Phase 3 | ✅ Resolved — `ical-generator` (pure JS) or manual RFC 5545 string; never `fs.writeFile` |
 | D1 `notification_log` `INSERT OR IGNORE` semantics | Phase 7 | 🔲 Active — verify in Miniflare before shipping NOTIF-01 |
 | CF Access vs app-level session for admin | Phase 4 | 🔲 Active — architecture compatible with both; decision deferred to Phase 4 planning |
+| Coverage tooling: v8 + istanbul both crash in vitest-pool-workers 0.13.3 | Phase 11 | 🔲 Active — known CF upstream issue; address when upgrading test stack |
 
 ---
 
@@ -97,24 +101,24 @@ None
 
 ## Accumulated Context
 
-### Pitfall Watchlist
+## Pitfall Watchlist
 
 The following 12 pitfalls from `research/PITFALLS.md` must be addressed in the phases listed:
 
-| Pitfall | Phase to Address |
-|---------|-----------------|
-| Capacity race condition (non-atomic check-then-insert) | Phase 2 |
-| argon2id WASM CPU budget | Phase 4 |
-| Queue at-least-once → duplicate emails | Phase 7 |
-| KV stale sessions after logout | Phase 4 |
-| `db.batch()` not rollback-safe | Phase 2 |
-| Worker bundle size > 10 MB | Phase 1 |
-| Wrangler binding name mismatch | Phase 1 |
-| Vitest Workers pool misconfiguration | Phase 1 |
-| D1 local vs production SQL compatibility | Phase 1 |
-| ICS generation with Node.js `fs` dependency | Phase 3 |
-| D1 "overloaded" under burst RSVP traffic | Phase 2 (load test) |
-| Stale D1 reads with read replication | Post-launch (deferred) |
+| Pitfall | Phase to Address | Status |
+|---------|-----------------|--------|
+| Capacity race condition (non-atomic check-then-insert) | Phase 2 | ✅ Resolved |
+| argon2id WASM CPU budget | Phase 4 | Pending |
+| Queue at-least-once → duplicate emails | Phase 7 | Pending |
+| KV stale sessions after logout | Phase 4 | Pending |
+| `db.batch()` not rollback-safe | Phase 2 | ✅ Resolved (no `BEGIN/COMMIT` needed) |
+| Worker bundle size > 10 MB | Phase 1 | ✅ Resolved (20.30 KiB gzip) |
+| Wrangler binding name mismatch | Phase 1 | ✅ Resolved |
+| Vitest Workers pool misconfiguration | Phase 1 | ✅ Resolved |
+| D1 local vs production SQL compatibility | Phase 1 | ✅ Resolved |
+| ICS generation with Node.js `fs` dependency | Phase 3 | Pending |
+| D1 "overloaded" under burst RSVP traffic | Phase 2 (load test) | ✅ 20-concurrent test passes |
+| Stale D1 reads with read replication | Post-launch (deferred) | Deferred |
 
 ### Architecture Reminders
 
@@ -130,12 +134,14 @@ The following 12 pitfalls from `research/PITFALLS.md` must be addressed in the p
 
 ## Session Continuity
 
+Last session: 2026-03-23  
+Stopped at: Phase 2 complete — all 40 tests passing; summary and STATE.md updated.
+
 *Next session should:*
-1. Run `/gsd-plan-phase 1` to decompose Phase 1 (Foundation) into an executable plan
-2. Reference `.planning/ROADMAP.md` Phase 1 requirements (SEC-05) and success criteria
-3. Key tasks in Phase 1: monorepo scaffold, Drizzle schema, Worker bindings, health endpoint, Vitest setup, CI bundle-size check
+1. Begin Phase 3: Thank-You page, ICS calendar attachment, and RSVP edit flow
+2. Plan file: `.planning/phases/03-thank-you-ics-edit/03-PLAN-001.md` (create if not exists)
 
 ---
 
 *State initialized: 2026-03-23*  
-*Last updated: 2026-03-23 — roadmap created, 11 phases defined*
+*Last updated: 2026-03-23 — Phase 1 plan in progress; Tasks 1–7 committed, Task 8 uncommitted, Tasks 9–10 pending*
