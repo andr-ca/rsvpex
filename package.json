@@ -1,0 +1,16 @@
+{
+  "name": "rsvpex",
+  "private": true,
+
+  "scripts": {
+    "dev": "pnpm --filter app dev",
+    "build": "pnpm --filter app build",
+    "deploy": "pnpm --filter app deploy",
+    "test": "pnpm --filter app test",
+    "typecheck": "pnpm --filter app typecheck"
+  },
+  "devDependencies": {
+    "wrangler": "4.76.0",
+    "typescript": "^5.8.3"
+  }
+}
