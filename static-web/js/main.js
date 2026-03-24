@@ -74,8 +74,16 @@
     submitBtn.textContent = 'Sending…';
 
     try {
-      const data = new FormData(form);
-      const res  = await fetch(form.action, { method: 'POST', body: data });
+      const formData = new FormData(form);
+      const payload  = JSON.stringify(Object.fromEntries(formData));
+      const res      = await fetch(form.action, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: payload
+      });
 
       if (res.ok) {
         window.location.href = '/thank-you.html';
