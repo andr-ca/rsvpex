@@ -11,6 +11,9 @@ import adminLoginRouter from './routes/adminLogin'
 import adminLogoutRouter from './routes/adminLogout'
 import adminPasswordResetRouter from './routes/adminPasswordReset'
 import { adminDashboardHandler } from './routes/adminDashboard'
+import adminEventsRouter from './routes/adminEvents'
+import adminRsvpsRouter from './routes/adminRsvps'
+import adminQrRouter from './routes/adminQr'
 import { requireAdmin } from './middleware/requireAdmin'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -36,5 +39,10 @@ app.route('/rsvp/admin', adminPasswordResetRouter)
 
 // Phase 4: Protected admin routes
 app.get('/rsvp/admin/', requireAdmin, adminDashboardHandler)
+
+// Phase 5: Admin Dashboard + Event/RSVP management
+app.route('/rsvp/admin', adminEventsRouter)
+app.route('/rsvp/admin', adminRsvpsRouter)
+app.route('/rsvp/admin', adminQrRouter)
 
 export default app
