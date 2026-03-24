@@ -4,6 +4,7 @@
 
 # ── Email (Resend) ───────────────────────────────────────
 RESEND_API_KEY=
+ADMIN_FROM_EMAIL=noreply@yourdomain.com
 
 # ── SMS (Twilio) ─────────────────────────────────────────
 TWILIO_ACCOUNT_SID=
