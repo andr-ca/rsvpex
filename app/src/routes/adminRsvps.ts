@@ -27,12 +27,11 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
   if (!event) return c.notFound()
   const stats = await getEventStats(c.env.DB, event.id)
 
-  const q = c.req.query
-  const page = Math.max(1, Number(q('page') || 1))
-  const statusFilter = q('status') as 'attending' | 'waitlist' | 'not_attending' | 'maybe' | undefined
-  const nameSearch = q('name') || undefined
-  const dateFrom = q('date_from') || undefined
-  const dateTo = q('date_to') || undefined
+  const page = Math.max(1, Number(c.req.query('page') || 1))
+  const statusFilter = c.req.query('status') as 'attending' | 'waitlist' | 'not_attending' | 'maybe' | undefined
+  const nameSearch = c.req.query('name') || undefined
+  const dateFrom = c.req.query('date_from') || undefined
+  const dateTo = c.req.query('date_to') || undefined
 
   const result = await listRsvps(c.env.DB, event.id, {
     status: statusFilter,
@@ -43,7 +42,7 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
     perPage: 50,
   })
 
-  const flash = q('flash')
+  const flash = c.req.query('flash')
 
   return c.html(adminPage(`RSVPs: ${escHtml(event.title)} — RSVPex Admin`, `
     <div class="page-header">

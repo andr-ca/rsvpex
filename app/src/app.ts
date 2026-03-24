@@ -41,8 +41,9 @@ app.route('/rsvp/admin', adminPasswordResetRouter)
 app.get('/rsvp/admin/', requireAdmin, adminDashboardHandler)
 
 // Phase 5: Admin Dashboard + Event/RSVP management
-app.route('/rsvp/admin', adminEventsRouter)
-app.route('/rsvp/admin', adminRsvpsRouter)
-app.route('/rsvp/admin', adminQrRouter)
+// NOTE: These routers use full paths (e.g. /rsvp/admin/events), so register at '/' to avoid double-prefix.
+app.route('/', adminEventsRouter)
+app.route('/', adminRsvpsRouter)
+app.route('/', adminQrRouter)
 
 export default app
