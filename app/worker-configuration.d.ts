@@ -13,6 +13,9 @@ declare namespace Cloudflare {
 		TURNSTILE_SECRET_KEY: string;
 		RESEND_API_KEY?: string;
 		ADMIN_FROM_EMAIL?: string;
+		TWILIO_ACCOUNT_SID?: string;
+		TWILIO_AUTH_TOKEN?: string;
+		TWILIO_FROM_NUMBER?: string;
 	}
 }
 interface Env extends Cloudflare.Env {}
