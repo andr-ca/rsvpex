@@ -10,6 +10,10 @@
  * @req CAP-04 — optional heuristic duplicate check
  * @req CAP-05 — children_ages length must match children_count
  * @req GAP-02 — 409 with action:resend_edit_link when duplicate detected
+ * @req NOTIF-01 — guest confirmation email queued after successful RSVP
+ * @req NOTIF-02 — admin new-RSVP alert queued after successful RSVP
+ * @req NOTIF-03 — capacity threshold check queued after successful RSVP
+ * @req NOTIF-05 — SMS confirmation queued when event has SMS enabled
  */
 
 import { Hono } from 'hono'
@@ -19,6 +23,8 @@ import { rsvpRateLimit } from '../middleware/rateLimit'
 import { checkAndInsertRsvp } from '../domain/capacity'
 import { isDuplicate, isHeuristicDuplicate } from '../domain/duplicates'
 import { generateToken, generateIpHash } from '../domain/tokens'
+import { currentThreshold } from '../domain/notifications'
+import type { NotificationMessage } from '../handlers/queue'
 
 // ── Zod schema for RSVP form submission ───────────────────────────────────────
 
@@ -58,6 +64,8 @@ type EventRow = {
   enable_waitlist: number
   enable_heuristic_dup_check: number
   allow_status_choice: number
+  notify_via_email: number
+  notify_via_sms: number
   questions: string // JSON array
 }
 
@@ -76,7 +84,7 @@ rsvpSubmitRouter.post(
       `SELECT id, slug, title, visibility, access_token, access_token_expires_at,
               opens_at, closes_at, status, is_kids_event, max_guests_total,
               max_party_size_per_rsvp, enable_waitlist, enable_heuristic_dup_check,
-              allow_status_choice, questions
+              allow_status_choice, notify_via_email, notify_via_sms, questions
          FROM events
         WHERE slug = ?
           AND status = 'published'
@@ -292,7 +300,44 @@ rsvpSubmitRouter.post(
       return c.html(renderCapacityFull(event.title), 409)
     }
 
-    // ── Success: redirect to thank-you page ───────────────────────────────
+    // ── Success: queue notifications via waitUntil ─────────────────────────
+    const msgs: NotificationMessage[] = []
+
+    // Guest confirmation email (if event has email notifications enabled and guest has email)
+    if (event.notify_via_email && email) {
+      msgs.push({ type: 'guest_confirmation', rsvpId, eventId: event.id })
+    }
+
+    // Admin alert email
+    msgs.push({ type: 'admin_alert', rsvpId, eventId: event.id })
+
+    // SMS confirmation (if event has SMS enabled and guest has phone)
+    if (event.notify_via_sms && phone) {
+      msgs.push({ type: 'sms_confirmation', rsvpId, eventId: event.id })
+    }
+
+    // Capacity threshold check
+    if (event.max_guests_total) {
+      const stats = await c.env.DB
+        .prepare(
+          "SELECT COALESCE(SUM(party_total), 0) as attending FROM rsvps WHERE event_id = ? AND status = 'attending'"
+        )
+        .bind(event.id)
+        .first<{ attending: number }>()
+      const attending = stats?.attending ?? 0
+      const threshold = currentThreshold(attending, event.max_guests_total)
+      if (threshold) {
+        msgs.push({ type: 'capacity_threshold', eventId: event.id, threshold, currentAttending: attending })
+      }
+    }
+
+    if (msgs.length > 0) {
+      c.executionCtx.waitUntil(
+        c.env.NOTIFICATIONS_QUEUE.sendBatch(msgs.map((body) => ({ body })))
+      )
+    }
+
+    // ── Redirect to thank-you page ────────────────────────────────────────
     return c.redirect(`/rsvp/thank-you?rid=${result.rsvpToken}`, 303)
   },
 )
