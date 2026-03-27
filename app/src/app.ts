@@ -14,6 +14,7 @@ import { adminDashboardHandler } from './routes/adminDashboard'
 import adminEventsRouter from './routes/adminEvents'
 import adminRsvpsRouter from './routes/adminRsvps'
 import adminQrRouter from './routes/adminQr'
+import adminDataRouter from './routes/adminData'
 import { requireAdmin } from './middleware/requireAdmin'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -45,5 +46,6 @@ app.get('/rsvp/admin/', requireAdmin, adminDashboardHandler)
 app.route('/', adminEventsRouter)
 app.route('/', adminRsvpsRouter)
 app.route('/', adminQrRouter)
+app.route('/', adminDataRouter)
 
 export default app
