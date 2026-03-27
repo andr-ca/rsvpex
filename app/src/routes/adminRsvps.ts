@@ -112,6 +112,19 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
       </tbody>
     </table>
     ${paginationHtml(result.page, result.totalPages, `/rsvp/admin/events/${event.id}/rsvps`, { status: statusFilter, name: nameSearch, date_from: dateFrom, date_to: dateTo })}
+    <details style="margin-top:2rem">
+      <summary style="cursor:pointer;font-weight:600">Import Guests from CSV</summary>
+      <div style="margin-top:1rem;padding:1rem;background:#f9f9f9;border-radius:4px;border:1px solid #eee">
+        <p style="margin-top:0;font-size:.9rem;color:#555">
+          CSV must have a header row. Required column: <code>name</code>.
+          Optional: <code>email, phone, status, adults, parents_count, siblings_count, children_count, notes</code>
+        </p>
+        <form method="POST" action="/rsvp/admin/events/${event.id}/import" enctype="multipart/form-data">
+          <input type="file" name="csv_file" accept=".csv,text/csv" required style="margin-bottom:.75rem">
+          <button type="submit" class="btn btn-primary">Import</button>
+        </form>
+      </div>
+    </details>
   `))
 })
 

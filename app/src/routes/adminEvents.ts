@@ -145,6 +145,8 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
         <a href="/rsvp/admin/events/${event.id}/edit" class="btn">Edit</a>
         <a href="/rsvp/admin/events/${event.id}/rsvps" class="btn">RSVPs (${stats.total})</a>
         <a href="/rsvp/admin/events/${event.id}/qr" class="btn">QR Code</a>
+        <a href="/rsvp/admin/events/${event.id}/export.csv" class="btn">Export CSV</a>
+        <a href="/rsvp/admin/events/${event.id}/export.json" class="btn">Export JSON</a>
       </div>
     </div>
     ${event.status === 'published' ? '<div class="warning">This event is live — changes will affect the public form immediately.</div>' : ''}
