@@ -8,9 +8,11 @@
  * @req GUEST-01 — dietary entries shown
  * @req GUEST-02 — gift registry button when wishlist_url set
  * @req GUEST-03 — party composition shown
+ * @req I18N-01 — event locale with Accept-Language fallback
  */
 import { Hono } from 'hono'
 import { getRsvpByToken } from '../domain/rsvpEdit'
+import { t, resolveLocale, type SupportedLocale } from '../i18n'
 
 const thankYouRouter = new Hono<{ Bindings: Env }>()
 
@@ -22,49 +24,52 @@ type EventRow = {
   wishlist_url: string | null
   timezone: string
   questions: string
+  locale: string
 }
 
 thankYouRouter.get('/thank-you', async (c) => {
   const rid = c.req.query('rid')
-  if (!rid) return c.html(renderError('Missing RSVP reference.'), 400)
+  if (!rid) return c.html(renderError(t('thanks.missingRef', 'en'), 'en'), 400)
 
   const rsvp = await getRsvpByToken(c.env.DB, rid)
   if (!rsvp)
     return c.html(
-      renderError('RSVP not found. The link may have expired or been revoked.'),
+      renderError(t('thanks.notFound', 'en'), 'en'),
       404,
     )
 
   const event = await c.env.DB.prepare(
-    `SELECT title, start_at, end_at, location_text, wishlist_url, timezone, questions
+    `SELECT title, start_at, end_at, location_text, wishlist_url, timezone, questions, locale
        FROM events WHERE id = ? LIMIT 1`,
   )
     .bind(rsvp.event_id)
     .first<EventRow>()
 
-  if (!event) return c.html(renderError('Event not found.'), 404)
+  if (!event) return c.html(renderError(t('thanks.eventNotFound', 'en'), 'en'), 404)
 
-  return c.html(renderThankYou(rsvp, event))
+  const locale = resolveLocale(event.locale, c.req.raw.headers.get('Accept-Language'))
+
+  return c.html(renderThankYou(rsvp, event, locale))
 })
 
 // ── Renderers ─────────────────────────────────────────────────────────────────
 
 type RsvpRow = Awaited<ReturnType<typeof getRsvpByToken>>
 
-function renderThankYou(rsvp: NonNullable<RsvpRow>, event: EventRow): string {
+function renderThankYou(rsvp: NonNullable<RsvpRow>, event: EventRow, locale: SupportedLocale): string {
   const dietary: Array<{ kind: string; value: string }> = JSON.parse(rsvp.dietary || '[]')
   const answers: Record<string, unknown> = JSON.parse(rsvp.answers || '{}')
   const questions: Array<{ id: string; label: string; type: string }> = JSON.parse(
     event.questions || '[]',
   )
 
-  const eventDate = new Date(event.start_at).toLocaleDateString('en', {
+  const eventDate = new Date(event.start_at).toLocaleDateString(locale, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   })
-  const eventTime = new Date(event.start_at).toLocaleTimeString('en', {
+  const eventTime = new Date(event.start_at).toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit',
   })
@@ -77,7 +82,7 @@ function renderThankYou(rsvp: NonNullable<RsvpRow>, event: EventRow): string {
               `<li>${escHtml(d.kind)}${d.value ? `: ${escHtml(d.value)}` : ''}</li>`,
           )
           .join('')
-      : '<li>None specified</li>'
+      : `<li>${escHtml(t('thanks.dietaryNone', locale))}</li>`
 
   const customAnswersHtml =
     questions.length > 0
@@ -91,57 +96,62 @@ function renderThankYou(rsvp: NonNullable<RsvpRow>, event: EventRow): string {
       : ''
 
   return page(
-    'Thank You — RSVPex',
+    `${t('thanks.badge', locale)} — RSVPex`,
     `
-    <div class="confirmation-badge">✓ RSVP Confirmed</div>
+    <div class="confirmation-badge">✓ ${escHtml(t('thanks.badge', locale))}</div>
 
     <h1>${escHtml(event.title)}</h1>
     <p class="event-meta">${escHtml(eventDate)} at ${escHtml(eventTime)}${event.location_text ? ` · ${escHtml(event.location_text)}` : ''}</p>
 
     <section class="summary">
-      <h2>Your RSVP</h2>
+      <h2>${escHtml(t('thanks.yourRsvp', locale))}</h2>
       <table>
-        <tr><td>Name</td><td>${escHtml(rsvp.name)}</td></tr>
-        ${rsvp.email ? `<tr><td>Email</td><td>${escHtml(rsvp.email)}</td></tr>` : ''}
-        ${rsvp.phone ? `<tr><td>Phone</td><td>${escHtml(rsvp.phone)}</td></tr>` : ''}
-        <tr><td>Adults</td><td>${rsvp.adults}</td></tr>
-        ${rsvp.children_count > 0 ? `<tr><td>Children</td><td>${rsvp.children_count}</td></tr>` : ''}
-        ${rsvp.parents_count > 0 ? `<tr><td>Parents / guardians</td><td>${rsvp.parents_count}</td></tr>` : ''}
-        ${rsvp.siblings_count > 0 ? `<tr><td>Siblings</td><td>${rsvp.siblings_count}</td></tr>` : ''}
+        <tr><td>${escHtml(t('thanks.name', locale))}</td><td>${escHtml(rsvp.name)}</td></tr>
+        ${rsvp.email ? `<tr><td>${escHtml(t('thanks.email', locale))}</td><td>${escHtml(rsvp.email)}</td></tr>` : ''}
+        ${rsvp.phone ? `<tr><td>${escHtml(t('thanks.phone', locale))}</td><td>${escHtml(rsvp.phone)}</td></tr>` : ''}
+        <tr><td>${escHtml(t('thanks.adults', locale))}</td><td>${rsvp.adults}</td></tr>
+        ${rsvp.children_count > 0 ? `<tr><td>${escHtml(t('thanks.children', locale))}</td><td>${rsvp.children_count}</td></tr>` : ''}
+        ${rsvp.parents_count > 0 ? `<tr><td>${escHtml(t('thanks.parents', locale))}</td><td>${rsvp.parents_count}</td></tr>` : ''}
+        ${rsvp.siblings_count > 0 ? `<tr><td>${escHtml(t('thanks.siblings', locale))}</td><td>${rsvp.siblings_count}</td></tr>` : ''}
         ${customAnswersHtml}
       </table>
 
-      <h3>Dietary Requirements</h3>
+      <h3>${escHtml(t('thanks.dietary', locale))}</h3>
       <ul>${dietaryHtml}</ul>
 
-      ${rsvp.notes ? `<h3>Notes</h3><p>${escHtml(rsvp.notes)}</p>` : ''}
+      ${rsvp.notes ? `<h3>${escHtml(t('thanks.notes', locale))}</h3><p>${escHtml(rsvp.notes)}</p>` : ''}
     </section>
 
     ${
       event.wishlist_url
         ? `
     <div class="action-block">
-      <a href="${escHtml(event.wishlist_url)}" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">View Gift Registry</a>
+      <a href="${escHtml(event.wishlist_url)}" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">${escHtml(t('thanks.giftRegistry', locale))}</a>
     </div>
     `
         : ''
     }
 
     <div class="action-row">
-      <a href="/rsvp/ics/${escHtml(rsvp.rsvp_token)}" class="btn">Download Calendar</a>
-      <a href="?rid=${escHtml(rsvp.rsvp_token)}" class="btn btn-outline">Edit RSVP</a>
+      <a href="/rsvp/ics/${escHtml(rsvp.rsvp_token)}" class="btn">${escHtml(t('thanks.downloadCalendar', locale))}</a>
+      <a href="?rid=${escHtml(rsvp.rsvp_token)}" class="btn btn-outline">${escHtml(t('thanks.editRsvp', locale))}</a>
     </div>
   `,
+    locale,
   )
 }
 
-function renderError(msg: string): string {
-  return page('Error — RSVPex', `<h1>Something went wrong</h1><p>${escHtml(msg)}</p>`)
+function renderError(msg: string, locale: SupportedLocale): string {
+  return page(
+    `${t('thanks.error', locale)} — RSVPex`,
+    `<h1>${escHtml(t('thanks.error', locale))}</h1><p>${escHtml(msg)}</p>`,
+    locale,
+  )
 }
 
-function page(title: string, body: string): string {
+function page(title: string, body: string, locale: SupportedLocale = 'en'): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${locale}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">

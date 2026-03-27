@@ -14,6 +14,7 @@
  * @req NOTIF-02 — admin new-RSVP alert queued after successful RSVP
  * @req NOTIF-03 — capacity threshold check queued after successful RSVP
  * @req NOTIF-05 — SMS confirmation queued when event has SMS enabled
+ * @req I18N-01 — event locale with Accept-Language fallback
  */
 
 import { Hono } from 'hono'
@@ -24,6 +25,7 @@ import { checkAndInsertRsvp } from '../domain/capacity'
 import { isDuplicate, isHeuristicDuplicate } from '../domain/duplicates'
 import { generateToken, generateIpHash } from '../domain/tokens'
 import { currentThreshold } from '../domain/notifications'
+import { t, resolveLocale, type SupportedLocale } from '../i18n'
 import type { NotificationMessage } from '../handlers/queue'
 
 // ── Zod schema for RSVP form submission ───────────────────────────────────────
@@ -66,6 +68,7 @@ type EventRow = {
   allow_status_choice: number
   notify_via_email: number
   notify_via_sms: number
+  locale: string
   questions: string // JSON array
 }
 
@@ -84,7 +87,7 @@ rsvpSubmitRouter.post(
       `SELECT id, slug, title, visibility, access_token, access_token_expires_at,
               opens_at, closes_at, status, is_kids_event, max_guests_total,
               max_party_size_per_rsvp, enable_waitlist, enable_heuristic_dup_check,
-              allow_status_choice, notify_via_email, notify_via_sms, questions
+              allow_status_choice, notify_via_email, notify_via_sms, locale, questions
          FROM events
         WHERE slug = ?
           AND status = 'published'
@@ -297,7 +300,8 @@ rsvpSubmitRouter.post(
 
     // ── Capacity full ──────────────────────────────────────────────────────
     if (!result.success) {
-      return c.html(renderCapacityFull(event.title), 409)
+      const locale = resolveLocale(event.locale, c.req.raw.headers.get('Accept-Language'))
+      return c.html(renderCapacityFull(event.title, locale), 409)
     }
 
     // ── Success: queue notifications via waitUntil ─────────────────────────
@@ -344,20 +348,20 @@ rsvpSubmitRouter.post(
 
 // ── HTML renderer for capacity-full state ─────────────────────────────────────
 
-function renderCapacityFull(title: string): string {
+function renderCapacityFull(title: string, locale: SupportedLocale): string {
   const escaped = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${locale}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Event Full — RSVPex</title>
+  <title>${escaped} — RSVPex</title>
   <style>body{font-family:system-ui,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem}</style>
 </head>
 <body>
   <h1>${escaped}</h1>
-  <p>We're sorry — this event has reached its maximum capacity and no waitlist is available.</p>
-  <p>Please contact the host directly if you believe this is an error.</p>
+  <p>${t('page.capacityFullMsg', locale).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+  <p>${t('page.capacityFullContact', locale).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
 </body>
 </html>`
 }

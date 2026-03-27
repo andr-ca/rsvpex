@@ -10,10 +10,12 @@
  * @req PUB-07 — time-window enforcement (opens_at / closes_at)
  * @req PUB-08 — kids-event mode toggles child-specific fields
  * @req GAP-06 — expired access token returns 403 with clear message
+ * @req I18N-01 — event locale with Accept-Language fallback
  */
 
 import { Hono } from 'hono'
 import { getRsvpByToken } from '../domain/rsvpEdit'
+import { t, resolveLocale, type SupportedLocale } from '../i18n'
 
 const rsvpFormRouter = new Hono<{ Bindings: Env }>()
 
@@ -76,29 +78,30 @@ rsvpFormRouter.get('/:slug', async (c) => {
     .first<EventRow>()
 
   if (!event) {
-    return c.html(renderNotFound(), 404)
+    return c.html(renderNotFound('en'), 404)
   }
 
+  const locale = resolveLocale(event.locale, c.req.raw.headers.get('Accept-Language'))
   const now = new Date().toISOString()
 
   // ── Visibility check ──────────────────────────────────────────────────────
   if (event.visibility === 'private') {
     if (!accessToken || accessToken !== event.access_token) {
-      return c.html(renderAccessDenied(event.title), 403)
+      return c.html(renderAccessDenied(event.title, locale), 403)
     }
     // GAP-06: expired token
     if (event.access_token_expires_at && event.access_token_expires_at < now) {
-      return c.html(renderLinkExpired(event.title), 403)
+      return c.html(renderLinkExpired(event.title, locale), 403)
     }
   }
 
   // ── Time-window check ─────────────────────────────────────────────────────
   if (event.opens_at && event.opens_at > now) {
-    return c.html(renderNotOpenYet(event), 200)
+    return c.html(renderNotOpenYet(event, locale), 200)
   }
 
   if (event.closes_at && event.closes_at < now) {
-    return c.html(renderClosed(event.title), 410)
+    return c.html(renderClosed(event.title, locale), 410)
   }
 
   // ── Happy path: render form ───────────────────────────────────────────────
@@ -107,33 +110,34 @@ rsvpFormRouter.get('/:slug', async (c) => {
   if (rid) {
     const rsvp = await getRsvpByToken(c.env.DB, rid)
     if (!rsvp || rsvp.event_id !== event.id) {
-      return c.html(renderInvalidEditLink(), 403)
+      return c.html(renderInvalidEditLink(locale), 403)
     }
-    return c.html(renderEditForm(event, rsvp as RsvpEditRow, rid))
+    return c.html(renderEditForm(event, rsvp as RsvpEditRow, rid, locale))
   }
 
   // ── New RSVP: render blank form ───────────────────────────────────────────
-  return c.html(renderForm(event, accessToken))
+  return c.html(renderForm(event, accessToken, locale))
 })
 
 // ── HTML renderers ────────────────────────────────────────────────────────────
 
-function renderInvalidEditLink(): string {
+function renderInvalidEditLink(locale: SupportedLocale): string {
   return page(
-    'Edit Link Invalid',
-    `<h1>Edit Link No Longer Valid</h1>
-     <p>This edit link is no longer valid. Contact the host for a new link.</p>`,
+    t('edit.invalidLink', locale),
+    `<h1>${escHtml(t('edit.invalidLink', locale))}</h1>
+     <p>${escHtml(t('edit.invalidLinkMsg', locale))}</p>`,
+    locale,
   )
 }
 
-function renderEditForm(event: EventRow, rsvp: RsvpEditRow, rid: string): string {
+function renderEditForm(event: EventRow, rsvp: RsvpEditRow, rid: string, locale: SupportedLocale): string {
   const dietary: Array<{ kind: string; value: string }> = JSON.parse(rsvp.dietary || '[]')
   const firstDietary = dietary[0] ?? null
 
   return page(
     event.title,
     `
-    <div class="edit-banner">Editing your RSVP</div>
+    <div class="edit-banner">${escHtml(t('edit.banner', locale))}</div>
     <h1>${escHtml(event.title)}</h1>
 
     <form method="POST" action="/rsvp/${escHtml(rsvp.id)}" id="rsvp-form">
@@ -141,23 +145,23 @@ function renderEditForm(event: EventRow, rsvp: RsvpEditRow, rid: string): string
       <input type="hidden" name="rid" value="${escHtml(rid)}">
 
       <fieldset>
-        <legend>Your Details</legend>
-        <label for="name">Full Name *</label>
+        <legend>${escHtml(t('legend.details', locale))}</legend>
+        <label for="name">${escHtml(t('form.fullName', locale))} *</label>
         <input id="name" name="name" type="text" required autocomplete="name" maxlength="200"
                value="${escHtml(rsvp.name)}">
 
-        <label for="email">Email</label>
+        <label for="email">${escHtml(t('form.email', locale))}</label>
         <input id="email" name="email" type="email" autocomplete="email" maxlength="254"
                value="${escHtml(rsvp.email ?? '')}">
 
-        <label for="phone">Phone</label>
+        <label for="phone">${escHtml(t('form.phone', locale))}</label>
         <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="30"
                value="${escHtml(rsvp.phone ?? '')}">
       </fieldset>
 
       <fieldset>
-        <legend>Your Party</legend>
-        <label for="adults">Adults *</label>
+        <legend>${escHtml(t('legend.party', locale))}</legend>
+        <label for="adults">${escHtml(t('form.adults', locale))} *</label>
         <input id="adults" name="adults" type="number" min="0" max="${event.max_party_size_per_rsvp}"
                value="${rsvp.adults}" required>
       </fieldset>
@@ -166,86 +170,86 @@ function renderEditForm(event: EventRow, rsvp: RsvpEditRow, rid: string): string
         event.allow_status_choice
           ? `
       <fieldset>
-        <legend>Attendance</legend>
-        <label><input type="radio" name="status" value="attending" ${rsvp.status === 'attending' ? 'checked' : ''}> Yes, I'll be there</label>
-        <label><input type="radio" name="status" value="maybe" ${rsvp.status === 'maybe' ? 'checked' : ''}> Maybe</label>
-        <label><input type="radio" name="status" value="not_attending" ${rsvp.status === 'not_attending' ? 'checked' : ''}> Sorry, can't make it</label>
+        <legend>${escHtml(t('legend.attendance', locale))}</legend>
+        <label><input type="radio" name="status" value="attending" ${rsvp.status === 'attending' ? 'checked' : ''}> ${escHtml(t('status.attending', locale))}</label>
+        <label><input type="radio" name="status" value="maybe" ${rsvp.status === 'maybe' ? 'checked' : ''}> ${escHtml(t('status.maybe', locale))}</label>
+        <label><input type="radio" name="status" value="not_attending" ${rsvp.status === 'not_attending' ? 'checked' : ''}> ${escHtml(t('status.notAttending', locale))}</label>
       </fieldset>
       `
           : ''
       }
 
       <fieldset>
-        <legend>Dietary Requirements</legend>
+        <legend>${escHtml(t('legend.dietary', locale))}</legend>
         <div class="dietary-row">
           <select name="dietary_kind[]">
-            <option value="">Select...</option>
-            ${['vegetarian', 'vegan', 'gluten_free', 'halal', 'kosher', 'nut_allergy', 'dairy_free', 'other']
-              .map(
-                (k) =>
-                  `<option value="${k}" ${firstDietary?.kind === k ? 'selected' : ''}>${k}</option>`,
-              )
-              .join('')}
+            <option value="">${escHtml(t('dietary.select', locale))}</option>
+            ${renderDietaryOptions(locale, firstDietary?.kind)}
           </select>
-          <input type="text" name="dietary_value[]" placeholder="Details (optional)"
+          <input type="text" name="dietary_value[]" placeholder="${escHtml(t('dietary.detailsPlaceholder', locale))}"
                  value="${escHtml(firstDietary?.value ?? '')}">
         </div>
       </fieldset>
 
       <fieldset>
-        <legend>Anything Else?</legend>
-        <label for="notes">Notes</label>
+        <legend>${escHtml(t('legend.notes', locale))}</legend>
+        <label for="notes">${escHtml(t('form.notes', locale))}</label>
         <textarea id="notes" name="notes" rows="3" maxlength="2000">${escHtml(rsvp.notes ?? '')}</textarea>
       </fieldset>
 
-      <button type="submit">Save Changes</button>
+      <button type="submit">${escHtml(t('form.saveChanges', locale))}</button>
     </form>
   `,
+    locale,
   )
 }
 
-function renderNotFound(): string {
-  return page('Event Not Found', `<h1>Event Not Found</h1><p>This event doesn't exist or is no longer available.</p>`)
+function renderNotFound(locale: SupportedLocale): string {
+  return page(
+    t('page.notFound', locale),
+    `<h1>${escHtml(t('page.notFound', locale))}</h1><p>${escHtml(t('page.notFoundMsg', locale))}</p>`,
+    locale,
+  )
 }
 
-function renderAccessDenied(title: string): string {
-  return page('Access Denied', `
+function renderAccessDenied(title: string, locale: SupportedLocale): string {
+  return page(t('page.accessDenied', locale), `
     <h1>${escHtml(title)}</h1>
-    <p>This event is private. Please use the personalised link you received to access this RSVP form.</p>
-  `)
+    <p>${escHtml(t('page.accessDeniedMsg', locale))}</p>
+  `, locale)
 }
 
-function renderLinkExpired(title: string): string {
-  return page('Link Expired', `
+function renderLinkExpired(title: string, locale: SupportedLocale): string {
+  return page(t('page.linkExpired', locale), `
     <h1>${escHtml(title)}</h1>
-    <p>Your invitation link has expired. Please contact the host for a new link.</p>
-  `)
+    <p>${escHtml(t('page.linkExpiredMsg', locale))}</p>
+  `, locale)
 }
 
-function renderNotOpenYet(event: EventRow): string {
-  const opensDate = event.opens_at ? new Date(event.opens_at).toLocaleDateString('en', { dateStyle: 'long' }) : ''
+function renderNotOpenYet(event: EventRow, locale: SupportedLocale): string {
+  const opensDate = event.opens_at ? new Date(event.opens_at).toLocaleDateString(locale, { dateStyle: 'long' }) : ''
   return page(event.title, `
     <h1>${escHtml(event.title)}</h1>
-    <p>RSVPs are not open yet.</p>
-    ${opensDate ? `<p>Opening on <strong>${escHtml(opensDate)}</strong>.</p>` : ''}
-  `)
+    <p>${escHtml(t('page.notOpenYet', locale))}</p>
+    ${opensDate ? `<p>${escHtml(t('page.openingOn', locale))} <strong>${escHtml(opensDate)}</strong>.</p>` : ''}
+  `, locale)
 }
 
-function renderClosed(title: string): string {
-  return page('RSVP Closed', `
+function renderClosed(title: string, locale: SupportedLocale): string {
+  return page(t('page.closed', locale), `
     <h1>${escHtml(title)}</h1>
-    <p>RSVPs for this event are now closed.</p>
-  `)
+    <p>${escHtml(t('page.closedMsg', locale))}</p>
+  `, locale)
 }
 
-function renderForm(event: EventRow, accessToken: string | null): string {
+function renderForm(event: EventRow, accessToken: string | null, locale: SupportedLocale): string {
   const isKids = Boolean(event.is_kids_event)
   const allowStatusChoice = Boolean(event.allow_status_choice)
   const maxParty = event.max_party_size_per_rsvp
 
   return page(event.title, `
     <h1>${escHtml(event.title)}</h1>
-    ${event.host_name ? `<p class="host">Hosted by ${escHtml(event.host_name)}</p>` : ''}
+    ${event.host_name ? `<p class="host">${escHtml(t('page.hostedBy', locale))} ${escHtml(event.host_name)}</p>` : ''}
     ${event.location_text ? `<p class="location">${escHtml(event.location_text)}</p>` : ''}
     ${event.description_html ?? ''}
 
@@ -253,111 +257,118 @@ function renderForm(event: EventRow, accessToken: string | null): string {
       ${accessToken ? `<input type="hidden" name="t" value="${escHtml(accessToken)}">` : ''}
 
       <fieldset>
-        <legend>Your Details</legend>
+        <legend>${escHtml(t('legend.details', locale))}</legend>
 
-        <label for="name">Full Name *</label>
+        <label for="name">${escHtml(t('form.fullName', locale))} *</label>
         <input id="name" name="name" type="text" required autocomplete="name" maxlength="200">
 
-        <label for="email">Email</label>
+        <label for="email">${escHtml(t('form.email', locale))}</label>
         <input id="email" name="email" type="email" autocomplete="email" maxlength="254">
 
-        <label for="phone">Phone (optional if email provided)</label>
+        <label for="phone">${escHtml(t('form.phoneHint', locale))}</label>
         <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="30">
       </fieldset>
 
       <fieldset>
-        <legend>Your Party</legend>
+        <legend>${escHtml(t('legend.party', locale))}</legend>
 
-        ${isKids ? renderKidsPartyFields(event) : renderStandardPartyFields(event, maxParty)}
+        ${isKids ? renderKidsPartyFields(event, locale) : renderStandardPartyFields(event, maxParty, locale)}
       </fieldset>
 
-      ${allowStatusChoice ? renderStatusChoice() : ''}
+      ${allowStatusChoice ? renderStatusChoice(locale) : ''}
 
       <fieldset>
-        <legend>Dietary Requirements</legend>
-        <p>Add up to 10 entries (one per line).</p>
+        <legend>${escHtml(t('legend.dietary', locale))}</legend>
+        <p>${escHtml(t('legend.dietaryHint', locale))}</p>
         <div id="dietary-container">
           <div class="dietary-row">
             <select name="dietary_kind[]">
-              <option value="">Select...</option>
-              <option value="vegetarian">Vegetarian</option>
-              <option value="vegan">Vegan</option>
-              <option value="gluten_free">Gluten-free</option>
-              <option value="halal">Halal</option>
-              <option value="kosher">Kosher</option>
-              <option value="nut_allergy">Nut allergy</option>
-              <option value="dairy_free">Dairy-free</option>
-              <option value="other">Other</option>
+              <option value="">${escHtml(t('dietary.select', locale))}</option>
+              ${renderDietaryOptions(locale)}
             </select>
-            <input type="text" name="dietary_value[]" placeholder="Details (optional)" maxlength="200">
+            <input type="text" name="dietary_value[]" placeholder="${escHtml(t('dietary.detailsPlaceholder', locale))}" maxlength="200">
           </div>
         </div>
       </fieldset>
 
       <fieldset>
-        <legend>Anything Else?</legend>
-        <label for="notes">Notes for the host (optional)</label>
+        <legend>${escHtml(t('legend.notes', locale))}</legend>
+        <label for="notes">${escHtml(t('form.notes', locale))}</label>
         <textarea id="notes" name="notes" rows="3" maxlength="2000"></textarea>
       </fieldset>
 
       <!-- Cloudflare Turnstile widget -->
       <div class="cf-turnstile" data-sitekey="TURNSTILE_SITE_KEY_PLACEHOLDER"></div>
 
-      <button type="submit">Send my RSVP</button>
+      <button type="submit">${escHtml(t('form.submit', locale))}</button>
     </form>
 
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-  `)
+  `, locale)
 }
 
-function renderKidsPartyFields(event: EventRow): string {
+function renderKidsPartyFields(event: EventRow, locale: SupportedLocale): string {
   const allowSiblings = Boolean(event.allow_siblings)
   const allowParents = Boolean(event.allow_parents)
   return `
-    <label for="children_count">Number of children attending *</label>
+    <label for="children_count">${escHtml(t('form.childrenCount', locale))} *</label>
     <input id="children_count" name="children_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" required>
 
-    <label for="children_ages">Children's ages (comma-separated, e.g. 3,5,7)</label>
+    <label for="children_ages">${escHtml(t('form.childrenAges', locale))}</label>
     <input id="children_ages" name="children_ages" type="text" maxlength="100" placeholder="3,5,7">
 
     ${allowSiblings ? `
-      <label for="siblings_count">Siblings attending</label>
+      <label for="siblings_count">${escHtml(t('form.siblings', locale))}</label>
       <input id="siblings_count" name="siblings_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="0">
     ` : ''}
 
     ${allowParents ? `
-      <label for="adults">Adults / parents attending</label>
+      <label for="adults">${escHtml(t('form.adultsKids', locale))}</label>
       <input id="adults" name="adults" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="1">
 
-      <label for="parents_count">Additional parents / guardians</label>
+      <label for="parents_count">${escHtml(t('form.parents', locale))}</label>
       <input id="parents_count" name="parents_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="0">
     ` : ''}
   `
 }
 
-function renderStandardPartyFields(event: EventRow, maxParty: number): string {
+function renderStandardPartyFields(event: EventRow, maxParty: number, locale: SupportedLocale): string {
   return `
-    <label for="adults">Number of adults attending (including yourself) *</label>
+    <label for="adults">${escHtml(t('form.adults', locale))} *</label>
     <input id="adults" name="adults" type="number" min="1" max="${maxParty}" value="1" required>
   `
 }
 
-function renderStatusChoice(): string {
+function renderStatusChoice(locale: SupportedLocale): string {
   return `
     <fieldset>
-      <legend>Will you be attending?</legend>
-      <label><input type="radio" name="status" value="attending" checked> Yes, I'll be there</label>
-      <label><input type="radio" name="status" value="maybe"> Maybe</label>
-      <label><input type="radio" name="status" value="not_attending"> Sorry, can't make it</label>
+      <legend>${escHtml(t('legend.attendance', locale))}</legend>
+      <label><input type="radio" name="status" value="attending" checked> ${escHtml(t('status.attending', locale))}</label>
+      <label><input type="radio" name="status" value="maybe"> ${escHtml(t('status.maybe', locale))}</label>
+      <label><input type="radio" name="status" value="not_attending"> ${escHtml(t('status.notAttending', locale))}</label>
     </fieldset>
   `
 }
 
+const DIETARY_KEYS = [
+  'vegetarian', 'vegan', 'glutenFree', 'halal', 'kosher', 'nutAllergy', 'dairyFree', 'other',
+] as const
+
+const DIETARY_VALUES = [
+  'vegetarian', 'vegan', 'gluten_free', 'halal', 'kosher', 'nut_allergy', 'dairy_free', 'other',
+] as const
+
+function renderDietaryOptions(locale: SupportedLocale, selectedKind?: string): string {
+  return DIETARY_KEYS.map((key, i) =>
+    `<option value="${DIETARY_VALUES[i]}" ${selectedKind === DIETARY_VALUES[i] ? 'selected' : ''}>${escHtml(t(`dietary.${key}`, locale))}</option>`
+  ).join('')
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function page(title: string, body: string): string {
+function page(title: string, body: string, locale: SupportedLocale = 'en'): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${locale}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -370,6 +381,7 @@ function page(title: string, body: string): string {
     input, select, textarea { width: 100%; padding: 0.4rem 0.6rem; margin-top: 0.25rem; font-size: 1rem; border: 1px solid #bbb; border-radius: 4px; }
     button[type=submit] { margin-top: 1rem; padding: 0.75rem 2rem; font-size: 1rem; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
     button[type=submit]:hover { background: #1d4ed8; }
+    .edit-banner { display: inline-block; background: #fef3c7; color: #92400e; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem; }
   </style>
 </head>
 <body>
