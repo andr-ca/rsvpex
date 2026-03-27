@@ -14,6 +14,16 @@ import {
   publishEvent, archiveEvent, getEventStats,
 } from '../domain/adminEvents'
 import { requireAdmin } from '../middleware/requireAdmin'
+import { writeAuditLog } from '../domain/audit'
+
+/** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
+function fireAuditLog(c: { executionCtx?: { waitUntil: (p: Promise<unknown>) => void } }, p: Promise<void>): void {
+  try {
+    c.executionCtx?.waitUntil(p.catch(() => {}))
+  } catch {
+    void p.catch(() => {})
+  }
+}
 
 const adminEventsRouter = new Hono<{ Bindings: Env; Variables: { adminUserId: string } }>()
 
@@ -129,6 +139,13 @@ adminEventsRouter.post('/rsvp/admin/events', async (c) => {
     reminderDaysBefore: d.reminder_days_before,
     questions: '[]',
   })
+  fireAuditLog(c, writeAuditLog(c.env.DB, {
+    actorId: c.get('adminUserId'),
+    entityType: 'event',
+    entityId: id,
+    action: 'create',
+    diff: { title: d.title },
+  }))
   return c.redirect(`/rsvp/admin/events/${id}`, 303)
 })
 
@@ -227,6 +244,13 @@ adminEventsRouter.post('/rsvp/admin/events/:id/edit', async (c) => {
     notifyViaSms: d.notify_via_sms,
     reminderDaysBefore: d.reminder_days_before,
   })
+  fireAuditLog(c, writeAuditLog(c.env.DB, {
+    actorId: c.get('adminUserId'),
+    entityType: 'event',
+    entityId: event.id,
+    action: 'update',
+    diff: { title: d.title },
+  }))
   return c.redirect(`/rsvp/admin/events/${event.id}?saved=1`, 303)
 })
 
@@ -235,6 +259,13 @@ adminEventsRouter.post('/rsvp/admin/events/:id/publish', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
   await publishEvent(c.env.DB, event.id)
+  fireAuditLog(c, writeAuditLog(c.env.DB, {
+    actorId: c.get('adminUserId'),
+    entityType: 'event',
+    entityId: event.id,
+    action: 'publish',
+    diff: null,
+  }))
   return c.redirect(`/rsvp/admin/events/${event.id}?published=1`, 303)
 })
 
@@ -243,6 +274,13 @@ adminEventsRouter.post('/rsvp/admin/events/:id/archive', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
   await archiveEvent(c.env.DB, event.id)
+  fireAuditLog(c, writeAuditLog(c.env.DB, {
+    actorId: c.get('adminUserId'),
+    entityType: 'event',
+    entityId: event.id,
+    action: 'archive',
+    diff: null,
+  }))
   return c.redirect(`/rsvp/admin/events`, 303)
 })
 

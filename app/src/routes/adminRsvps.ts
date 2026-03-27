@@ -16,6 +16,16 @@ import {
   promoteFromWaitlist, deleteRsvp,
 } from '../domain/adminRsvps'
 import { requireAdmin } from '../middleware/requireAdmin'
+import { writeAuditLog } from '../domain/audit'
+
+/** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
+function fireAuditLog(c: { executionCtx?: { waitUntil: (p: Promise<unknown>) => void } }, p: Promise<void>): void {
+  try {
+    c.executionCtx?.waitUntil(p.catch(() => {}))
+  } catch {
+    void p.catch(() => {})
+  }
+}
 
 const adminRsvpsRouter = new Hono<{ Bindings: Env; Variables: { adminUserId: string } }>()
 
@@ -170,6 +180,13 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => 
   if (!result.success) {
     return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=capacity_error`, 303)
   }
+  fireAuditLog(c, writeAuditLog(c.env.DB, {
+    actorId: c.get('adminUserId'),
+    entityType: 'rsvp',
+    entityId: rsvp.id,
+    action: 'rsvp_edit',
+    diff: { status: d.status },
+  }))
   return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=saved`, 303)
 })
 
@@ -179,6 +196,13 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/promote', async (c) 
   if (!event) return c.notFound()
   const result = await promoteFromWaitlist(c.env.DB, c.req.param('rsvpId'))
   if (result.success) {
+    fireAuditLog(c, writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'rsvp',
+      entityId: c.req.param('rsvpId'),
+      action: 'rsvp_promote',
+      diff: null,
+    }))
     return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=promoted`, 303)
   }
   return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=no_capacity`, 303)
@@ -188,7 +212,15 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/promote', async (c) 
 adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/delete', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
-  await deleteRsvp(c.env.DB, c.req.param('rsvpId'))
+  const rsvpId = c.req.param('rsvpId')
+  await deleteRsvp(c.env.DB, rsvpId)
+  fireAuditLog(c, writeAuditLog(c.env.DB, {
+    actorId: c.get('adminUserId'),
+    entityType: 'rsvp',
+    entityId: rsvpId,
+    action: 'rsvp_delete',
+    diff: null,
+  }))
   return c.redirect(`/rsvp/admin/events/${event.id}/rsvps`, 303)
 })
 
