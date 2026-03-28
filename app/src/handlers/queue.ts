@@ -35,7 +35,7 @@ const BASE_URL = 'https://rsvpex.app'
 export async function handleQueue(
   batch: MessageBatch<NotificationMessage>,
   env: Env,
-  _ctx: ExecutionContext
+  _ctx: ExecutionContext,
 ): Promise<void> {
   for (const msg of batch.messages) {
     try {
@@ -74,14 +74,18 @@ async function processMessage(body: NotificationMessage, env: Env): Promise<void
 
 async function fetchRsvp(db: D1Database, rsvpId: string): Promise<RsvpRow | null> {
   return db
-    .prepare('SELECT id, name, email, phone, status, adults, party_total, dietary, notes, rsvp_token FROM rsvps WHERE id = ? LIMIT 1')
+    .prepare(
+      'SELECT id, name, email, phone, status, adults, party_total, dietary, notes, rsvp_token FROM rsvps WHERE id = ? LIMIT 1',
+    )
     .bind(rsvpId)
     .first<RsvpRow>()
 }
 
 async function fetchEvent(db: D1Database, eventId: string): Promise<EventRow | null> {
   return db
-    .prepare('SELECT id, title, slug, start_at, timezone, host_name, max_guests_total, threshold_80_notified_at, threshold_100_notified_at FROM events WHERE id = ? LIMIT 1')
+    .prepare(
+      'SELECT id, title, slug, start_at, timezone, host_name, max_guests_total, threshold_80_notified_at, threshold_100_notified_at FROM events WHERE id = ? LIMIT 1',
+    )
     .bind(eventId)
     .first<EventRow>()
 }
@@ -120,7 +124,7 @@ async function handleCapacityThreshold(
   eventId: string,
   threshold: 80 | 100,
   _currentAttending: number,
-  env: Env
+  env: Env,
 ): Promise<void> {
   const adminEmail = env.ADMIN_FROM_EMAIL
   if (!adminEmail) return
@@ -135,8 +139,7 @@ async function handleCapacityThreshold(
 
   // Mark threshold as notified
   const column = threshold === 80 ? 'threshold_80_notified_at' : 'threshold_100_notified_at'
-  await env.DB
-    .prepare(`UPDATE events SET ${column} = datetime('now') WHERE id = ?`)
+  await env.DB.prepare(`UPDATE events SET ${column} = datetime('now') WHERE id = ?`)
     .bind(eventId)
     .run()
 }
@@ -219,17 +222,14 @@ async function sendSms(to: string, message: string, env: Env): Promise<void> {
     console.warn('Twilio secrets not set — skipping SMS send')
     return
   }
-  const res = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${btoa(`${sid}:${token}`)}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ To: to, From: from, Body: message }).toString(),
-    }
-  )
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${btoa(`${sid}:${token}`)}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ To: to, From: from, Body: message }).toString(),
+  })
   if (!res.ok) {
     const text = await res.text()
     throw new Error(`Twilio API error ${res.status}: ${text}`)

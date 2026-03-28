@@ -98,7 +98,7 @@ describe('listEvents', () => {
     const id1 = await createEvent(env.DB, { ...baseInput, startAt: '2027-01-01T00:00:00Z' })
     const id2 = await createEvent(env.DB, { ...baseInput, startAt: '2027-06-01T00:00:00Z' })
     const events = await listEvents(env.DB)
-    const ids = events.map(e => e.id)
+    const ids = events.map((e) => e.id)
     expect(ids.indexOf(id2)).toBeLessThan(ids.indexOf(id1))
   })
 })
@@ -143,8 +143,10 @@ describe('getEventStats', () => {
     const id = await createEvent(env.DB, { ...baseInput, maxGuestsTotal: 50 })
     await env.DB.prepare(
       `INSERT INTO rsvps (id, event_id, name, adults, status, rsvp_token, dietary, answers, children_ages)
-       VALUES (?, ?, 'Alice', 2, 'attending', ?, '[]', '{}', '[]')`
-    ).bind(crypto.randomUUID(), id, crypto.randomUUID()).run()
+       VALUES (?, ?, 'Alice', 2, 'attending', ?, '[]', '{}', '[]')`,
+    )
+      .bind(crypto.randomUUID(), id, crypto.randomUUID())
+      .run()
     const stats = await getEventStats(env.DB, id)
     expect(stats.attending).toBe(2)
     expect(stats.capacity).toBe(50)

@@ -44,10 +44,7 @@ async function seedEventWithReminderToday(db: D1Database, reminderDaysBefore = 7
   })
 
   // Publish it so it passes the status = 'published' filter
-  await db
-    .prepare(`UPDATE events SET status = 'published' WHERE id = ?`)
-    .bind(id)
-    .run()
+  await db.prepare(`UPDATE events SET status = 'published' WHERE id = ?`).bind(id).run()
 
   return id
 }
@@ -84,7 +81,9 @@ async function seedAuditLog(db: D1Database, createdAt: string) {
 }
 
 const mockCtx: ExecutionContext = {
-  waitUntil: (p: Promise<unknown>) => { void p },
+  waitUntil: (p: Promise<unknown>) => {
+    void p
+  },
   passThroughOnException: vi.fn(),
 } as unknown as ExecutionContext
 
@@ -197,7 +196,9 @@ describe('handleScheduled — audit purge job', () => {
     expect(old).toBeNull()
 
     // Recent row should remain
-    const recent = await env.DB.prepare('SELECT id FROM audit_logs WHERE id = ?').bind(recentId).first()
+    const recent = await env.DB.prepare('SELECT id FROM audit_logs WHERE id = ?')
+      .bind(recentId)
+      .first()
     expect(recent).not.toBeNull()
   })
 })

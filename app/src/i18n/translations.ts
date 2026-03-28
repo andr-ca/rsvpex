@@ -65,15 +65,18 @@ export const translations: Record<SupportedLocale, TranslationTable> = {
     'page.notFound': 'Event Not Found',
     'page.notFoundMsg': "This event doesn't exist or is no longer available.",
     'page.accessDenied': 'Access Denied',
-    'page.accessDeniedMsg': 'This event is private. Please use the personalised link you received to access this RSVP form.',
+    'page.accessDeniedMsg':
+      'This event is private. Please use the personalised link you received to access this RSVP form.',
     'page.linkExpired': 'Link Expired',
-    'page.linkExpiredMsg': 'Your invitation link has expired. Please contact the host for a new link.',
+    'page.linkExpiredMsg':
+      'Your invitation link has expired. Please contact the host for a new link.',
     'page.notOpenYet': 'RSVPs are not open yet.',
     'page.openingOn': 'Opening on',
     'page.closed': 'RSVP Closed',
     'page.closedMsg': 'RSVPs for this event are now closed.',
     'page.capacityFull': 'Event Full',
-    'page.capacityFullMsg': "We're sorry — this event has reached its maximum capacity and no waitlist is available.",
+    'page.capacityFullMsg':
+      "We're sorry — this event has reached its maximum capacity and no waitlist is available.",
     'page.capacityFullContact': 'Please contact the host directly if you believe this is an error.',
     'page.hostedBy': 'Hosted by',
 
@@ -139,21 +142,26 @@ export const translations: Record<SupportedLocale, TranslationTable> = {
 
     'edit.banner': 'Modification de votre RSVP',
     'edit.invalidLink': 'Lien de modification invalide',
-    'edit.invalidLinkMsg': "Ce lien de modification n'est plus valide. Contactez l'hôte pour un nouveau lien.",
+    'edit.invalidLinkMsg':
+      "Ce lien de modification n'est plus valide. Contactez l'hôte pour un nouveau lien.",
 
     'page.notFound': 'Événement introuvable',
     'page.notFoundMsg': "Cet événement n'existe pas ou n'est plus disponible.",
     'page.accessDenied': 'Accès refusé',
-    'page.accessDeniedMsg': 'Cet événement est privé. Veuillez utiliser le lien personnalisé que vous avez reçu pour accéder au formulaire.',
+    'page.accessDeniedMsg':
+      'Cet événement est privé. Veuillez utiliser le lien personnalisé que vous avez reçu pour accéder au formulaire.',
     'page.linkExpired': 'Lien expiré',
-    'page.linkExpiredMsg': "Votre lien d'invitation a expiré. Veuillez contacter l'hôte pour un nouveau lien.",
+    'page.linkExpiredMsg':
+      "Votre lien d'invitation a expiré. Veuillez contacter l'hôte pour un nouveau lien.",
     'page.notOpenYet': 'Les inscriptions ne sont pas encore ouvertes.',
     'page.openingOn': 'Ouverture le',
     'page.closed': 'Inscriptions terminées',
     'page.closedMsg': 'Les inscriptions pour cet événement sont maintenant fermées.',
     'page.capacityFull': 'Événement complet',
-    'page.capacityFullMsg': "Nous sommes désolés — cet événement a atteint sa capacité maximale et aucune liste d'attente n'est disponible.",
-    'page.capacityFullContact': "Veuillez contacter l'hôte directement si vous pensez qu'il s'agit d'une erreur.",
+    'page.capacityFullMsg':
+      "Nous sommes désolés — cet événement a atteint sa capacité maximale et aucune liste d'attente n'est disponible.",
+    'page.capacityFullContact':
+      "Veuillez contacter l'hôte directement si vous pensez qu'il s'agit d'une erreur.",
     'page.hostedBy': 'Organisé par',
 
     'thanks.badge': 'RSVP confirmé',
@@ -217,20 +225,24 @@ export const translations: Record<SupportedLocale, TranslationTable> = {
 
     'edit.banner': 'Editando tu RSVP',
     'edit.invalidLink': 'Enlace de edición no válido',
-    'edit.invalidLinkMsg': 'Este enlace de edición ya no es válido. Contacta al anfitrión para un nuevo enlace.',
+    'edit.invalidLinkMsg':
+      'Este enlace de edición ya no es válido. Contacta al anfitrión para un nuevo enlace.',
 
     'page.notFound': 'Evento no encontrado',
     'page.notFoundMsg': 'Este evento no existe o ya no está disponible.',
     'page.accessDenied': 'Acceso denegado',
-    'page.accessDeniedMsg': 'Este evento es privado. Utiliza el enlace personalizado que recibiste para acceder al formulario.',
+    'page.accessDeniedMsg':
+      'Este evento es privado. Utiliza el enlace personalizado que recibiste para acceder al formulario.',
     'page.linkExpired': 'Enlace expirado',
-    'page.linkExpiredMsg': 'Tu enlace de invitación ha expirado. Contacta al anfitrión para un nuevo enlace.',
+    'page.linkExpiredMsg':
+      'Tu enlace de invitación ha expirado. Contacta al anfitrión para un nuevo enlace.',
     'page.notOpenYet': 'Las inscripciones aún no están abiertas.',
     'page.openingOn': 'Apertura el',
     'page.closed': 'Inscripciones cerradas',
     'page.closedMsg': 'Las inscripciones para este evento están cerradas.',
     'page.capacityFull': 'Evento completo',
-    'page.capacityFullMsg': 'Lo sentimos — este evento ha alcanzado su capacidad máxima y no hay lista de espera disponible.',
+    'page.capacityFullMsg':
+      'Lo sentimos — este evento ha alcanzado su capacidad máxima y no hay lista de espera disponible.',
     'page.capacityFullContact': 'Contacta al anfitrión directamente si crees que esto es un error.',
     'page.hostedBy': 'Organizado por',
 

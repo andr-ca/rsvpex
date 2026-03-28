@@ -23,10 +23,10 @@ export type RsvpInsertData = {
   parentsCount: number
   siblingsCount: number
   childrenCount: number
-  childrenAges: string      // JSON array string e.g. '[3,5]'
-  dietary: string           // JSON array string
+  childrenAges: string // JSON array string e.g. '[3,5]'
+  dietary: string // JSON array string
   notes: string | null
-  answers: string           // JSON object string
+  answers: string // JSON object string
   status: 'attending' | 'not_attending' | 'maybe' | 'waitlist'
   rsvpToken: string
   ipHash: string | null
@@ -35,7 +35,12 @@ export type RsvpInsertData = {
 }
 
 export type CapacityResult =
-  | { success: true;  status: 'attending' | 'waitlist' | 'not_attending' | 'maybe'; rsvpId: string; rsvpToken: string }
+  | {
+      success: true
+      status: 'attending' | 'waitlist' | 'not_attending' | 'maybe'
+      rsvpId: string
+      rsvpToken: string
+    }
   | { success: false; status: 'full' }
 
 /**
@@ -88,10 +93,25 @@ async function _checkAndInsertRsvp(
          VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?)`,
       )
       .bind(
-        data.id, data.eventId, data.name, data.email, data.phone,
-        data.adults, data.parentsCount, data.siblingsCount, data.childrenCount, data.childrenAges,
-        data.dietary, data.notes, data.answers, data.status, 'web', data.rsvpToken,
-        data.ipHash, data.userAgent, data.clientSubmittedAt,
+        data.id,
+        data.eventId,
+        data.name,
+        data.email,
+        data.phone,
+        data.adults,
+        data.parentsCount,
+        data.siblingsCount,
+        data.childrenCount,
+        data.childrenAges,
+        data.dietary,
+        data.notes,
+        data.answers,
+        data.status,
+        'web',
+        data.rsvpToken,
+        data.ipHash,
+        data.userAgent,
+        data.clientSubmittedAt,
       )
       .run()
 
@@ -106,8 +126,9 @@ async function _checkAndInsertRsvp(
   // D1 serializes writes at the API layer so this single statement is atomic.
   const partySize = data.adults + data.parentsCount + data.siblingsCount + data.childrenCount
 
-  const insertResult = await db.prepare(
-    `INSERT INTO rsvps
+  const insertResult = await db
+    .prepare(
+      `INSERT INTO rsvps
        (id, event_id, name, email, phone,
         adults, parents_count, siblings_count, children_count, children_ages,
         dietary, notes, answers, status, source, rsvp_token,
@@ -124,14 +145,34 @@ async function _checkAndInsertRsvp(
             AND status = 'attending') + ? <=
         (SELECT max_guests_total FROM events WHERE id = ?)
       )`,
-  ).bind(
-    data.id, data.eventId, data.name, data.email, data.phone,
-    data.adults, data.parentsCount, data.siblingsCount, data.childrenCount, data.childrenAges,
-    data.dietary, data.notes, data.answers, 'attending', 'web', data.rsvpToken,
-    data.ipHash, data.userAgent, data.clientSubmittedAt,
-    // WHERE clause bindings
-    eventId, eventId, partySize, eventId,
-  ).run()
+    )
+    .bind(
+      data.id,
+      data.eventId,
+      data.name,
+      data.email,
+      data.phone,
+      data.adults,
+      data.parentsCount,
+      data.siblingsCount,
+      data.childrenCount,
+      data.childrenAges,
+      data.dietary,
+      data.notes,
+      data.answers,
+      'attending',
+      'web',
+      data.rsvpToken,
+      data.ipHash,
+      data.userAgent,
+      data.clientSubmittedAt,
+      // WHERE clause bindings
+      eventId,
+      eventId,
+      partySize,
+      eventId,
+    )
+    .run()
 
   if (insertResult.meta.changes > 0) {
     // Row was inserted as 'attending'.
@@ -151,10 +192,25 @@ async function _checkAndInsertRsvp(
          VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?)`,
       )
       .bind(
-        data.id, data.eventId, data.name, data.email, data.phone,
-        data.adults, data.parentsCount, data.siblingsCount, data.childrenCount, data.childrenAges,
-        data.dietary, data.notes, data.answers, 'waitlist', 'web', data.rsvpToken,
-        data.ipHash, data.userAgent, data.clientSubmittedAt,
+        data.id,
+        data.eventId,
+        data.name,
+        data.email,
+        data.phone,
+        data.adults,
+        data.parentsCount,
+        data.siblingsCount,
+        data.childrenCount,
+        data.childrenAges,
+        data.dietary,
+        data.notes,
+        data.answers,
+        'waitlist',
+        'web',
+        data.rsvpToken,
+        data.ipHash,
+        data.userAgent,
+        data.clientSubmittedAt,
       )
       .run()
 

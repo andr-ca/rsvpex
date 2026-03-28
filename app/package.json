@@ -12,7 +12,11 @@
     "test:watch": "vitest",
     "migrate:local": "wrangler d1 migrations apply rsvpex-db --local",
     "migrate:remote": "wrangler d1 migrations apply rsvpex-db --remote",
-    "types": "wrangler types"
+    "types": "wrangler types",
+    "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts'",
+    "format:check": "prettier --check 'src/**/*.ts' 'tests/**/*.ts'",
+    "lint": "eslint 'src/**/*.ts' 'tests/**/*.ts'",
+    "lint:fix": "eslint --fix 'src/**/*.ts' 'tests/**/*.ts'"
   },
   "dependencies": {
     "@hono/zod-validator": "0.7.6",
@@ -26,6 +30,7 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.13.3",
+    "@eslint/js": "^9.39.4",
     "@types/node": "^25.5.0",
     "@types/qrcode": "^1.5.6",
     "@typescript-eslint/eslint-plugin": "^8.29.0",
@@ -34,8 +39,10 @@
     "@vitest/coverage-v8": "4.1.0",
     "drizzle-kit": "0.31.10",
     "eslint": "^9.24.0",
+    "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.5.3",
     "typescript": "^5.8.3",
+    "typescript-eslint": "^8.57.2",
     "vitest": "4.1.0",
     "wrangler": "4.76.0"
   }

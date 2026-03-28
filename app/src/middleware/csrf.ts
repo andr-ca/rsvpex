@@ -66,7 +66,9 @@ export function csrfProtection() {
 
     // ── Origin header check ───────────────────────────────────────────
     const origin = c.req.raw.headers.get('Origin')
-    const deployDomain = (c.env as unknown as Record<string, unknown>).DEPLOYMENT_DOMAIN as string | undefined
+    const deployDomain = (c.env as unknown as Record<string, unknown>).DEPLOYMENT_DOMAIN as
+      | string
+      | undefined
 
     if (origin && deployDomain) {
       // Compare origin against deployment domain

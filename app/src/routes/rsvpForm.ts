@@ -130,7 +130,12 @@ function renderInvalidEditLink(locale: SupportedLocale): string {
   )
 }
 
-function renderEditForm(event: EventRow, rsvp: RsvpEditRow, rid: string, locale: SupportedLocale): string {
+function renderEditForm(
+  event: EventRow,
+  rsvp: RsvpEditRow,
+  rid: string,
+  locale: SupportedLocale,
+): string {
   const dietary: Array<{ kind: string; value: string }> = JSON.parse(rsvp.dietary || '[]')
   const firstDietary = dietary[0] ?? null
 
@@ -213,33 +218,51 @@ function renderNotFound(locale: SupportedLocale): string {
 }
 
 function renderAccessDenied(title: string, locale: SupportedLocale): string {
-  return page(t('page.accessDenied', locale), `
+  return page(
+    t('page.accessDenied', locale),
+    `
     <h1>${escHtml(title)}</h1>
     <p>${escHtml(t('page.accessDeniedMsg', locale))}</p>
-  `, locale)
+  `,
+    locale,
+  )
 }
 
 function renderLinkExpired(title: string, locale: SupportedLocale): string {
-  return page(t('page.linkExpired', locale), `
+  return page(
+    t('page.linkExpired', locale),
+    `
     <h1>${escHtml(title)}</h1>
     <p>${escHtml(t('page.linkExpiredMsg', locale))}</p>
-  `, locale)
+  `,
+    locale,
+  )
 }
 
 function renderNotOpenYet(event: EventRow, locale: SupportedLocale): string {
-  const opensDate = event.opens_at ? new Date(event.opens_at).toLocaleDateString(locale, { dateStyle: 'long' }) : ''
-  return page(event.title, `
+  const opensDate = event.opens_at
+    ? new Date(event.opens_at).toLocaleDateString(locale, { dateStyle: 'long' })
+    : ''
+  return page(
+    event.title,
+    `
     <h1>${escHtml(event.title)}</h1>
     <p>${escHtml(t('page.notOpenYet', locale))}</p>
     ${opensDate ? `<p>${escHtml(t('page.openingOn', locale))} <strong>${escHtml(opensDate)}</strong>.</p>` : ''}
-  `, locale)
+  `,
+    locale,
+  )
 }
 
 function renderClosed(title: string, locale: SupportedLocale): string {
-  return page(t('page.closed', locale), `
+  return page(
+    t('page.closed', locale),
+    `
     <h1>${escHtml(title)}</h1>
     <p>${escHtml(t('page.closedMsg', locale))}</p>
-  `, locale)
+  `,
+    locale,
+  )
 }
 
 function renderForm(event: EventRow, accessToken: string | null, locale: SupportedLocale): string {
@@ -247,7 +270,9 @@ function renderForm(event: EventRow, accessToken: string | null, locale: Support
   const allowStatusChoice = Boolean(event.allow_status_choice)
   const maxParty = event.max_party_size_per_rsvp
 
-  return page(event.title, `
+  return page(
+    event.title,
+    `
     <h1>${escHtml(event.title)}</h1>
     ${event.host_name ? `<p class="host">${escHtml(t('page.hostedBy', locale))} ${escHtml(event.host_name)}</p>` : ''}
     ${event.location_text ? `<p class="location">${escHtml(event.location_text)}</p>` : ''}
@@ -304,7 +329,9 @@ function renderForm(event: EventRow, accessToken: string | null, locale: Support
     </form>
 
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-  `, locale)
+  `,
+    locale,
+  )
 }
 
 function renderKidsPartyFields(event: EventRow, locale: SupportedLocale): string {
@@ -317,22 +344,34 @@ function renderKidsPartyFields(event: EventRow, locale: SupportedLocale): string
     <label for="children_ages">${escHtml(t('form.childrenAges', locale))}</label>
     <input id="children_ages" name="children_ages" type="text" maxlength="100" placeholder="3,5,7">
 
-    ${allowSiblings ? `
+    ${
+      allowSiblings
+        ? `
       <label for="siblings_count">${escHtml(t('form.siblings', locale))}</label>
       <input id="siblings_count" name="siblings_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="0">
-    ` : ''}
+    `
+        : ''
+    }
 
-    ${allowParents ? `
+    ${
+      allowParents
+        ? `
       <label for="adults">${escHtml(t('form.adultsKids', locale))}</label>
       <input id="adults" name="adults" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="1">
 
       <label for="parents_count">${escHtml(t('form.parents', locale))}</label>
       <input id="parents_count" name="parents_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="0">
-    ` : ''}
+    `
+        : ''
+    }
   `
 }
 
-function renderStandardPartyFields(event: EventRow, maxParty: number, locale: SupportedLocale): string {
+function renderStandardPartyFields(
+  event: EventRow,
+  maxParty: number,
+  locale: SupportedLocale,
+): string {
   return `
     <label for="adults">${escHtml(t('form.adults', locale))} *</label>
     <input id="adults" name="adults" type="number" min="1" max="${maxParty}" value="1" required>
@@ -351,16 +390,31 @@ function renderStatusChoice(locale: SupportedLocale): string {
 }
 
 const DIETARY_KEYS = [
-  'vegetarian', 'vegan', 'glutenFree', 'halal', 'kosher', 'nutAllergy', 'dairyFree', 'other',
+  'vegetarian',
+  'vegan',
+  'glutenFree',
+  'halal',
+  'kosher',
+  'nutAllergy',
+  'dairyFree',
+  'other',
 ] as const
 
 const DIETARY_VALUES = [
-  'vegetarian', 'vegan', 'gluten_free', 'halal', 'kosher', 'nut_allergy', 'dairy_free', 'other',
+  'vegetarian',
+  'vegan',
+  'gluten_free',
+  'halal',
+  'kosher',
+  'nut_allergy',
+  'dairy_free',
+  'other',
 ] as const
 
 function renderDietaryOptions(locale: SupportedLocale, selectedKind?: string): string {
-  return DIETARY_KEYS.map((key, i) =>
-    `<option value="${DIETARY_VALUES[i]}" ${selectedKind === DIETARY_VALUES[i] ? 'selected' : ''}>${escHtml(t(`dietary.${key}`, locale))}</option>`
+  return DIETARY_KEYS.map(
+    (key, i) =>
+      `<option value="${DIETARY_VALUES[i]}" ${selectedKind === DIETARY_VALUES[i] ? 'selected' : ''}>${escHtml(t(`dietary.${key}`, locale))}</option>`,
   ).join('')
 }
 

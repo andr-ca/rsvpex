@@ -53,9 +53,7 @@ async function seedRsvp(
   return { id, token }
 }
 
-function makeBatch(
-  messages: NotificationMessage[],
-): MessageBatch<NotificationMessage> {
+function makeBatch(messages: NotificationMessage[]): MessageBatch<NotificationMessage> {
   const msgObjects = messages.map((body) => ({
     body,
     ack: vi.fn(),
@@ -73,9 +71,9 @@ function makeBatch(
 }
 
 function mockFetch(status = 200) {
-  return vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ id: 'mock-id' }), { status }),
-  )
+  return vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValue(new Response(JSON.stringify({ id: 'mock-id' }), { status }))
 }
 
 const mockCtx: ExecutionContext = {
@@ -111,10 +109,9 @@ describe('handleQueue — guest_confirmation', () => {
     // ack called
     expect((batch.messages[0] as any).ack).toHaveBeenCalled()
     // notification_log row inserted
-    const log = await env.DB
-      .prepare(
-        'SELECT * FROM notification_log WHERE rsvp_id = ? AND notification_type = ?',
-      )
+    const log = await env.DB.prepare(
+      'SELECT * FROM notification_log WHERE rsvp_id = ? AND notification_type = ?',
+    )
       .bind(rsvpId, 'guest_confirmation')
       .first()
     expect(log).not.toBeNull()
@@ -206,8 +203,7 @@ describe('handleQueue — capacity_threshold', () => {
     ])
     await handleQueue(batch as any, envWithKey as any, mockCtx)
 
-    const event = await env.DB
-      .prepare('SELECT threshold_80_notified_at FROM events WHERE id = ?')
+    const event = await env.DB.prepare('SELECT threshold_80_notified_at FROM events WHERE id = ?')
       .bind(eventId)
       .first<{ threshold_80_notified_at: string | null }>()
     expect(event?.threshold_80_notified_at).not.toBeNull()
@@ -218,8 +214,9 @@ describe('handleQueue — capacity_threshold', () => {
     const fetchSpy = mockFetch()
     const eventId = await createEvent(env.DB, { ...baseEventInput, maxGuestsTotal: 100 })
     // Pre-mark as notified
-    await env.DB
-      .prepare("UPDATE events SET threshold_80_notified_at = datetime('now') WHERE id = ?")
+    await env.DB.prepare(
+      "UPDATE events SET threshold_80_notified_at = datetime('now') WHERE id = ?",
+    )
       .bind(eventId)
       .run()
     const envWithKey = { ...env, RESEND_API_KEY: 'test-key', ADMIN_FROM_EMAIL: 'admin@test.com' }
@@ -242,8 +239,7 @@ describe('handleQueue — capacity_threshold', () => {
     ])
     await handleQueue(batch as any, envWithKey as any, mockCtx)
 
-    const event = await env.DB
-      .prepare('SELECT threshold_100_notified_at FROM events WHERE id = ?')
+    const event = await env.DB.prepare('SELECT threshold_100_notified_at FROM events WHERE id = ?')
       .bind(eventId)
       .first<{ threshold_100_notified_at: string | null }>()
     expect(event?.threshold_100_notified_at).not.toBeNull()
@@ -274,10 +270,9 @@ describe('handleQueue — sms_confirmation', () => {
       expect.stringContaining('twilio'),
       expect.objectContaining({ method: 'POST' }),
     )
-    const log = await env.DB
-      .prepare(
-        'SELECT * FROM notification_log WHERE rsvp_id = ? AND notification_type = ?',
-      )
+    const log = await env.DB.prepare(
+      'SELECT * FROM notification_log WHERE rsvp_id = ? AND notification_type = ?',
+    )
       .bind(rsvpId, 'sms_confirmation')
       .first()
     expect(log).not.toBeNull()

@@ -32,11 +32,7 @@ thankYouRouter.get('/thank-you', async (c) => {
   if (!rid) return c.html(renderError(t('thanks.missingRef', 'en'), 'en'), 400)
 
   const rsvp = await getRsvpByToken(c.env.DB, rid)
-  if (!rsvp)
-    return c.html(
-      renderError(t('thanks.notFound', 'en'), 'en'),
-      404,
-    )
+  if (!rsvp) return c.html(renderError(t('thanks.notFound', 'en'), 'en'), 404)
 
   const event = await c.env.DB.prepare(
     `SELECT title, start_at, end_at, location_text, wishlist_url, timezone, questions, locale
@@ -56,7 +52,11 @@ thankYouRouter.get('/thank-you', async (c) => {
 
 type RsvpRow = Awaited<ReturnType<typeof getRsvpByToken>>
 
-function renderThankYou(rsvp: NonNullable<RsvpRow>, event: EventRow, locale: SupportedLocale): string {
+function renderThankYou(
+  rsvp: NonNullable<RsvpRow>,
+  event: EventRow,
+  locale: SupportedLocale,
+): string {
   const dietary: Array<{ kind: string; value: string }> = JSON.parse(rsvp.dietary || '[]')
   const answers: Record<string, unknown> = JSON.parse(rsvp.answers || '{}')
   const questions: Array<{ id: string; label: string; type: string }> = JSON.parse(
@@ -77,10 +77,7 @@ function renderThankYou(rsvp: NonNullable<RsvpRow>, event: EventRow, locale: Sup
   const dietaryHtml =
     dietary.length > 0
       ? dietary
-          .map(
-            (d) =>
-              `<li>${escHtml(d.kind)}${d.value ? `: ${escHtml(d.value)}` : ''}</li>`,
-          )
+          .map((d) => `<li>${escHtml(d.kind)}${d.value ? `: ${escHtml(d.value)}` : ''}</li>`)
           .join('')
       : `<li>${escHtml(t('thanks.dietaryNone', locale))}</li>`
 

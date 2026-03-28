@@ -10,10 +10,10 @@ describe('Phase 1 Smoke Tests', () => {
 
   it('all tables exist after migration', async () => {
     const result = await env.DB.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+      "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
     ).all<{ name: string }>()
 
-    const tableNames = result.results.map(r => r.name).sort()
+    const tableNames = result.results.map((r) => r.name).sort()
     expect(tableNames).toContain('admin_users')
     expect(tableNames).toContain('events')
     expect(tableNames).toContain('rsvps')

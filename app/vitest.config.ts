@@ -22,15 +22,41 @@ export default defineConfig(async () => {
       }),
     ],
     test: {
+      exclude: ['eslint-rules/**', 'node_modules/**'],
       setupFiles: ['./tests/apply-migrations.ts'],
       coverage: {
+        // NOTE: Coverage instrumentation is not currently supported inside
+        // @cloudflare/vitest-pool-workers (Workers runtime lacks node:inspector).
+        // V8 and Istanbul providers both fail. These thresholds document the
+        // project's coverage requirements for when the ecosystem adds support.
+        // Track: https://github.com/cloudflare/workers-sdk/issues
         provider: 'v8',
+        include: ['src/**/*.ts'],
         thresholds: {
           global: {
             statements: 80,
             branches: 80,
             functions: 80,
             lines: 80,
+          },
+          // 100% coverage on critical modules (TEST-02)
+          'src/domain/capacity.ts': {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100,
+          },
+          'src/domain/tokens.ts': {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100,
+          },
+          'src/domain/duplicates.ts': {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100,
           },
         },
       },

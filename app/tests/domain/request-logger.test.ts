@@ -25,21 +25,34 @@ describe('buildLogLine()', () => {
 
   it('uses level 50 for 5xx status', () => {
     const line = buildLogLine({
-      reqId: 'x', method: 'GET', path: '/', status: 500, durationMs: 1,
+      reqId: 'x',
+      method: 'GET',
+      path: '/',
+      status: 500,
+      durationMs: 1,
     })
     expect(line.level).toBe(50) // error
   })
 
   it('uses level 40 for 4xx status', () => {
     const line = buildLogLine({
-      reqId: 'x', method: 'GET', path: '/', status: 403, durationMs: 1,
+      reqId: 'x',
+      method: 'GET',
+      path: '/',
+      status: 403,
+      durationMs: 1,
     })
     expect(line.level).toBe(40) // warn
   })
 
   it('includes traceId when provided', () => {
     const line = buildLogLine({
-      reqId: 'x', method: 'GET', path: '/', status: 200, durationMs: 1, traceId: 'trace-abc',
+      reqId: 'x',
+      method: 'GET',
+      path: '/',
+      status: 200,
+      durationMs: 1,
+      traceId: 'trace-abc',
     })
     expect(line.traceId).toBe('trace-abc')
   })
@@ -59,7 +72,9 @@ describe('stripPii()', () => {
   })
 
   it('redacts multiple PII params', () => {
-    expect(stripPii('/rsvp/x?email=a@b.com&phone=123')).toBe('/rsvp/x?email=[REDACTED]&phone=[REDACTED]')
+    expect(stripPii('/rsvp/x?email=a@b.com&phone=123')).toBe(
+      '/rsvp/x?email=[REDACTED]&phone=[REDACTED]',
+    )
   })
 
   it('leaves path without PII params unchanged', () => {

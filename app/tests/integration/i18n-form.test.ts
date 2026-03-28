@@ -101,7 +101,22 @@ describe('i18n integration', () => {
     await env.DB.prepare(
       `INSERT INTO rsvps (id, event_id, name, email, adults, parents_count, siblings_count, children_count, dietary, answers, status, rsvp_token)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind('rsvp-fr', 'evt-i18n', 'Marie', 'marie@test.com', 1, 0, 0, 0, '[]', '{}', 'attending', 'tok-fr').run()
+    )
+      .bind(
+        'rsvp-fr',
+        'evt-i18n',
+        'Marie',
+        'marie@test.com',
+        1,
+        0,
+        0,
+        0,
+        '[]',
+        '{}',
+        'attending',
+        'tok-fr',
+      )
+      .run()
 
     const res = await app.fetch(new Request('http://localhost/rsvp/thank-you?rid=tok-fr'), env)
     expect(res.status).toBe(200)
@@ -121,7 +136,22 @@ describe('i18n integration', () => {
     await env.DB.prepare(
       `INSERT INTO rsvps (id, event_id, name, email, adults, parents_count, siblings_count, children_count, dietary, answers, status, rsvp_token)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind('rsvp-fill', 'evt-i18n', 'Jean', 'jean@test.com', 1, 0, 0, 0, '[]', '{}', 'attending', 'tok-fill').run()
+    )
+      .bind(
+        'rsvp-fill',
+        'evt-i18n',
+        'Jean',
+        'jean@test.com',
+        1,
+        0,
+        0,
+        0,
+        '[]',
+        '{}',
+        'attending',
+        'tok-fill',
+      )
+      .run()
 
     const form = new URLSearchParams({
       name: 'Pierre',

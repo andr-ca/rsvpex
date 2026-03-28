@@ -11,9 +11,9 @@
 import { argon2id } from '@noble/hashes/argon2.js'
 import { utf8ToBytes, bytesToHex, hexToBytes } from '@noble/hashes/utils.js'
 
-const ARGON2_M = 19456  // memory in KiB (OWASP minimum)
-const ARGON2_T = 2      // iterations
-const ARGON2_P = 1      // parallelism (Workers: single-threaded)
+const ARGON2_M = 19456 // memory in KiB (OWASP minimum)
+const ARGON2_T = 2 // iterations
+const ARGON2_P = 1 // parallelism (Workers: single-threaded)
 const LOCKOUT_ATTEMPTS = 5
 const LOCKOUT_MINUTES = 15
 
@@ -140,7 +140,9 @@ export async function createSession(
 export async function getSession(db: D1Database, sessionId: string): Promise<SessionRow | null> {
   const now = new Date().toISOString()
   return db
-    .prepare('SELECT id, admin_user_id, expires_at, created_at FROM sessions WHERE id = ? AND expires_at > ?')
+    .prepare(
+      'SELECT id, admin_user_id, expires_at, created_at FROM sessions WHERE id = ? AND expires_at > ?',
+    )
     .bind(sessionId, now)
     .first<SessionRow>()
 }
@@ -160,7 +162,9 @@ export async function hashToken(rawToken: string): Promise<string> {
   const encoder = new TextEncoder()
   const data = encoder.encode(rawToken)
   const buf = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 /**
@@ -177,7 +181,7 @@ export async function createResetToken(
   const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString()
   await db
     .prepare(
-      'INSERT INTO password_reset_tokens (id, admin_user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)'
+      'INSERT INTO password_reset_tokens (id, admin_user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)',
     )
     .bind(crypto.randomUUID(), adminUserId, tokenHash, expiresAt)
     .run()
@@ -199,7 +203,7 @@ export async function consumeResetToken(
   const row = await db
     .prepare(
       `SELECT id, admin_user_id, used_at FROM password_reset_tokens
-       WHERE token_hash = ? AND expires_at > ? LIMIT 1`
+       WHERE token_hash = ? AND expires_at > ? LIMIT 1`,
     )
     .bind(tokenHash, now)
     .first<{ id: string; admin_user_id: string; used_at: string | null }>()

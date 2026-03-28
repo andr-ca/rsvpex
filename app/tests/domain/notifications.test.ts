@@ -43,7 +43,11 @@ const baseEvent = {
 
 describe('buildGuestConfirmationEmail', () => {
   it('includes guest name, event title, and edit link', () => {
-    const result = buildGuestConfirmationEmail(baseRsvp as any, baseEvent as any, 'https://example.com')
+    const result = buildGuestConfirmationEmail(
+      baseRsvp as any,
+      baseEvent as any,
+      'https://example.com',
+    )
     expect(result.subject).toContain('Summer Party')
     expect(result.html).toContain('Alice Smith')
     expect(result.html).toContain('tok-abc')
@@ -51,7 +55,11 @@ describe('buildGuestConfirmationEmail', () => {
   })
 
   it('includes party size in email body', () => {
-    const result = buildGuestConfirmationEmail(baseRsvp as any, baseEvent as any, 'https://example.com')
+    const result = buildGuestConfirmationEmail(
+      baseRsvp as any,
+      baseEvent as any,
+      'https://example.com',
+    )
     expect(result.html).toContain('2')
   })
 })

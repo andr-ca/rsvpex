@@ -55,24 +55,34 @@ rsvpPatchRouter.patch('/:id', async (c) => {
   // ── Dietary ───────────────────────────────────────────────────────────────
   const dietaryKinds = Array.isArray(body.dietary_kind)
     ? body.dietary_kind
-    : body.dietary_kind ? [body.dietary_kind] : []
+    : body.dietary_kind
+      ? [body.dietary_kind]
+      : []
   const dietaryValues = Array.isArray(body.dietary_value)
     ? body.dietary_value
-    : body.dietary_value ? [body.dietary_value] : []
+    : body.dietary_value
+      ? [body.dietary_value]
+      : []
   const dietary = dietaryKinds
     .map((kind, i) => ({ kind: kind || '', value: dietaryValues[i] || '' }))
-    .filter(d => d.kind)
+    .filter((d) => d.kind)
 
   // ── Children ages ─────────────────────────────────────────────────────────
   let childrenAgesJson = '[]'
   if (body.children_count > 0 && body.children_ages) {
-    const ages = body.children_ages.split(',').map(s => s.trim()).filter(Boolean).map(Number).filter(n => !isNaN(n))
+    const ages = body.children_ages
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => !isNaN(n))
     childrenAgesJson = JSON.stringify(ages)
   }
 
   // ── Custom question answers ───────────────────────────────────────────────
   const event = await c.env.DB.prepare('SELECT questions FROM events WHERE id = ? LIMIT 1')
-    .bind(rsvp.event_id).first<{ questions: string }>()
+    .bind(rsvp.event_id)
+    .first<{ questions: string }>()
   const questionDefs: Array<{ id: string; type: string; label: string; required?: boolean }> =
     JSON.parse(event?.questions || '[]')
 

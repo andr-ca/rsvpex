@@ -4,7 +4,7 @@
  * @req ADMIN-02 — session creation, session lookup, session deletion
  */
 import { env } from 'cloudflare:test'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
   hashPassword,
   verifyPassword,
@@ -64,14 +64,17 @@ describe('checkLockout', () => {
 describe('recordFailedAttempt', () => {
   it('increments failed_login_attempts', async () => {
     const userId = crypto.randomUUID()
-    await env.DB.prepare(
-      `INSERT INTO admin_users (id, email, password_hash) VALUES (?, ?, ?)`
-    ).bind(userId, `fail${userId.slice(0,4)}@test.com`, 'x').run()
+    await env.DB.prepare(`INSERT INTO admin_users (id, email, password_hash) VALUES (?, ?, ?)`)
+      .bind(userId, `fail${userId.slice(0, 4)}@test.com`, 'x')
+      .run()
 
     await recordFailedAttempt(env.DB, userId)
 
-    const row = await env.DB.prepare('SELECT failed_login_attempts, locked_until FROM admin_users WHERE id = ?')
-      .bind(userId).first<{ failed_login_attempts: number; locked_until: string | null }>()
+    const row = await env.DB.prepare(
+      'SELECT failed_login_attempts, locked_until FROM admin_users WHERE id = ?',
+    )
+      .bind(userId)
+      .first<{ failed_login_attempts: number; locked_until: string | null }>()
     expect(row?.failed_login_attempts).toBe(1)
     expect(row?.locked_until).toBeNull()
   })
@@ -79,13 +82,18 @@ describe('recordFailedAttempt', () => {
   it('sets locked_until after 5th failed attempt', async () => {
     const userId = crypto.randomUUID()
     await env.DB.prepare(
-      `INSERT INTO admin_users (id, email, password_hash, failed_login_attempts) VALUES (?, ?, ?, 4)`
-    ).bind(userId, `lock${userId.slice(0,4)}@test.com`, 'x').run()
+      `INSERT INTO admin_users (id, email, password_hash, failed_login_attempts) VALUES (?, ?, ?, 4)`,
+    )
+      .bind(userId, `lock${userId.slice(0, 4)}@test.com`, 'x')
+      .run()
 
     await recordFailedAttempt(env.DB, userId)
 
-    const row = await env.DB.prepare('SELECT failed_login_attempts, locked_until FROM admin_users WHERE id = ?')
-      .bind(userId).first<{ failed_login_attempts: number; locked_until: string | null }>()
+    const row = await env.DB.prepare(
+      'SELECT failed_login_attempts, locked_until FROM admin_users WHERE id = ?',
+    )
+      .bind(userId)
+      .first<{ failed_login_attempts: number; locked_until: string | null }>()
     expect(row?.failed_login_attempts).toBe(5)
     expect(row?.locked_until).not.toBeNull()
     // locked_until should be ~15 min from now
@@ -101,13 +109,18 @@ describe('clearLockout', () => {
     const userId = crypto.randomUUID()
     const future = new Date(Date.now() + 900000).toISOString()
     await env.DB.prepare(
-      `INSERT INTO admin_users (id, email, password_hash, failed_login_attempts, locked_until) VALUES (?, ?, ?, 5, ?)`
-    ).bind(userId, `clear${userId.slice(0,4)}@test.com`, 'x', future).run()
+      `INSERT INTO admin_users (id, email, password_hash, failed_login_attempts, locked_until) VALUES (?, ?, ?, 5, ?)`,
+    )
+      .bind(userId, `clear${userId.slice(0, 4)}@test.com`, 'x', future)
+      .run()
 
     await clearLockout(env.DB, userId)
 
-    const row = await env.DB.prepare('SELECT failed_login_attempts, locked_until FROM admin_users WHERE id = ?')
-      .bind(userId).first<{ failed_login_attempts: number; locked_until: string | null }>()
+    const row = await env.DB.prepare(
+      'SELECT failed_login_attempts, locked_until FROM admin_users WHERE id = ?',
+    )
+      .bind(userId)
+      .first<{ failed_login_attempts: number; locked_until: string | null }>()
     expect(row?.failed_login_attempts).toBe(0)
     expect(row?.locked_until).toBeNull()
   })
@@ -116,9 +129,9 @@ describe('clearLockout', () => {
 describe('createSession / getSession / deleteSession', () => {
   it('creates a session and retrieves it', async () => {
     const userId = crypto.randomUUID()
-    await env.DB.prepare(
-      `INSERT INTO admin_users (id, email, password_hash) VALUES (?, ?, ?)`
-    ).bind(userId, `sess${userId.slice(0,4)}@test.com`, 'x').run()
+    await env.DB.prepare(`INSERT INTO admin_users (id, email, password_hash) VALUES (?, ?, ?)`)
+      .bind(userId, `sess${userId.slice(0, 4)}@test.com`, 'x')
+      .run()
 
     const sessionId = await createSession(env.DB, userId, SESSION_EXPIRY_DAYS)
     expect(sessionId).toBeTruthy()
@@ -135,15 +148,15 @@ describe('createSession / getSession / deleteSession', () => {
 
   it('returns null for expired session', async () => {
     const userId = crypto.randomUUID()
-    await env.DB.prepare(
-      `INSERT INTO admin_users (id, email, password_hash) VALUES (?, ?, ?)`
-    ).bind(userId, `exp${userId.slice(0,4)}@test.com`, 'x').run()
+    await env.DB.prepare(`INSERT INTO admin_users (id, email, password_hash) VALUES (?, ?, ?)`)
+      .bind(userId, `exp${userId.slice(0, 4)}@test.com`, 'x')
+      .run()
 
     const sessionId = crypto.randomUUID()
     const past = new Date(Date.now() - 1000).toISOString()
-    await env.DB.prepare(
-      `INSERT INTO sessions (id, admin_user_id, expires_at) VALUES (?, ?, ?)`
-    ).bind(sessionId, userId, past).run()
+    await env.DB.prepare(`INSERT INTO sessions (id, admin_user_id, expires_at) VALUES (?, ?, ?)`)
+      .bind(sessionId, userId, past)
+      .run()
 
     const session = await getSession(env.DB, sessionId)
     expect(session).toBeNull()
@@ -151,9 +164,9 @@ describe('createSession / getSession / deleteSession', () => {
 
   it('deletes a session', async () => {
     const userId = crypto.randomUUID()
-    await env.DB.prepare(
-      `INSERT INTO admin_users (id, email, password_hash) VALUES (?, ?, ?)`
-    ).bind(userId, `del${userId.slice(0,4)}@test.com`, 'x').run()
+    await env.DB.prepare(`INSERT INTO admin_users (id, email, password_hash) VALUES (?, ?, ?)`)
+      .bind(userId, `del${userId.slice(0, 4)}@test.com`, 'x')
+      .run()
 
     const sessionId = await createSession(env.DB, userId, SESSION_EXPIRY_DAYS)
     await deleteSession(env.DB, sessionId)

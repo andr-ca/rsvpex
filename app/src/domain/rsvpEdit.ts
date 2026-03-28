@@ -117,9 +117,7 @@ export async function updateRsvp(
 export async function revokeToken(db: D1Database, rsvpId: string): Promise<string> {
   const newToken = crypto.randomUUID()
   await db
-    .prepare(
-      `UPDATE rsvps SET rsvp_token = ?, updated_at = datetime('now') WHERE id = ?`,
-    )
+    .prepare(`UPDATE rsvps SET rsvp_token = ?, updated_at = datetime('now') WHERE id = ?`)
     .bind(newToken, rsvpId)
     .run()
   return newToken

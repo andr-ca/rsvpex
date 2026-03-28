@@ -8,7 +8,9 @@ import {
 
 describe('dietaryToText', () => {
   it('converts JSON array to comma-separated text', () => {
-    expect(dietaryToText('[{"kind":"vegan"},{"kind":"custom","value":"Gluten-Free"}]')).toBe('vegan, Gluten-Free')
+    expect(dietaryToText('[{"kind":"vegan"},{"kind":"custom","value":"Gluten-Free"}]')).toBe(
+      'vegan, Gluten-Free',
+    )
   })
   it('returns empty string for empty array', () => {
     expect(dietaryToText('[]')).toBe('')
@@ -38,7 +40,9 @@ describe('rsvpsToCsv', () => {
 
   it('includes header row with correct columns', () => {
     const csv = rsvpsToCsv([])
-    expect(csv.split('\n')[0]).toBe('id,name,email,phone,status,adults,parents_count,siblings_count,children_count,party_total,dietary,notes,submitted_at')
+    expect(csv.split('\n')[0]).toBe(
+      'id,name,email,phone,status,adults,parents_count,siblings_count,children_count,party_total,dietary,notes,submitted_at',
+    )
   })
 
   it('serializes a row correctly', () => {
@@ -75,7 +79,11 @@ describe('parseCsvRow', () => {
   it('parses a simple CSV row into object', () => {
     const headers = ['name', 'email', 'status']
     const row = 'Jane Doe,jane@example.com,attending'
-    expect(parseCsvRow(headers, row)).toEqual({ name: 'Jane Doe', email: 'jane@example.com', status: 'attending' })
+    expect(parseCsvRow(headers, row)).toEqual({
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      status: 'attending',
+    })
   })
 
   it('handles quoted fields', () => {

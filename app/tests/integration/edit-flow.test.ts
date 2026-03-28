@@ -36,10 +36,7 @@ async function seedEventAndRsvp(
 describe('GET /rsvp/:slug?rid=<token> — edit mode', () => {
   it('returns 200 with prefilled name', async () => {
     const { slug, token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/${slug}?rid=${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/${slug}?rid=${token}`), env)
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('Charlie Brown')
@@ -47,20 +44,14 @@ describe('GET /rsvp/:slug?rid=<token> — edit mode', () => {
 
   it('shows "Editing your RSVP" banner', async () => {
     const { slug, token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/${slug}?rid=${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/${slug}?rid=${token}`), env)
     const html = await res.text()
     expect(html).toContain('Editing your RSVP')
   })
 
   it('returns clear error page for revoked/invalid token', async () => {
     const { slug } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/${slug}?rid=invalid-token`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/${slug}?rid=invalid-token`), env)
     expect(res.status).toBe(403)
     const html = await res.text()
     expect(html).toContain('no longer valid')

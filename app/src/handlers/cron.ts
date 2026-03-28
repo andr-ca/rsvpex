@@ -19,14 +19,9 @@ import type { NotificationMessage } from './queue'
 export async function handleScheduled(
   controller: ScheduledController,
   env: Env,
-  ctx: ExecutionContext
+  ctx: ExecutionContext,
 ): Promise<void> {
-  ctx.waitUntil(
-    Promise.all([
-      runReminderJob(env),
-      runAuditPurgeJob(env),
-    ])
-  )
+  ctx.waitUntil(Promise.all([runReminderJob(env), runAuditPurgeJob(env)]))
 }
 
 async function runReminderJob(env: Env): Promise<void> {

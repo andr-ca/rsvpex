@@ -14,8 +14,10 @@ describe('security response headers', () => {
   it('sets CSP on public RSVP form with Turnstile directives', async () => {
     await env.DB.prepare(
       `INSERT INTO events (id, title, slug, status, visibility, timezone, start_at, max_guests_total, max_party_size_per_rsvp, locale)
-       VALUES (?, 'Test', 'sec-test', 'published', 'public', 'UTC', '2099-01-01T00:00:00Z', 100, 10, 'en')`
-    ).bind(crypto.randomUUID()).run()
+       VALUES (?, 'Test', 'sec-test', 'published', 'public', 'UTC', '2099-01-01T00:00:00Z', 100, 10, 'en')`,
+    )
+      .bind(crypto.randomUUID())
+      .run()
 
     const res = await app.fetch(new Request('http://localhost/rsvp/sec-test'), env)
     const csp = res.headers.get('Content-Security-Policy') ?? ''

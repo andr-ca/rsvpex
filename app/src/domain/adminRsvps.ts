@@ -49,7 +49,11 @@ export type RsvpListResult = {
 /**
  * List RSVPs for an event with optional filters and pagination.
  */
-export async function listRsvps(db: D1Database, eventId: string, filters: RsvpListFilters): Promise<RsvpListResult> {
+export async function listRsvps(
+  db: D1Database,
+  eventId: string,
+  filters: RsvpListFilters,
+): Promise<RsvpListResult> {
   const conditions: string[] = ['event_id = ?']
   const binds: unknown[] = [eventId]
 
@@ -71,15 +75,17 @@ export async function listRsvps(db: D1Database, eventId: string, filters: RsvpLi
   }
 
   const where = conditions.join(' AND ')
-  const countResult = await db.prepare(
-    `SELECT COUNT(*) as total FROM rsvps WHERE ${where}`
-  ).bind(...binds).first<{ total: number }>()
+  const countResult = await db
+    .prepare(`SELECT COUNT(*) as total FROM rsvps WHERE ${where}`)
+    .bind(...binds)
+    .first<{ total: number }>()
   const total = countResult?.total ?? 0
 
   const offset = (filters.page - 1) * filters.perPage
-  const rows = await db.prepare(
-    `SELECT * FROM rsvps WHERE ${where} ORDER BY submitted_at DESC LIMIT ? OFFSET ?`
-  ).bind(...binds, filters.perPage, offset).all<RsvpRow>()
+  const rows = await db
+    .prepare(`SELECT * FROM rsvps WHERE ${where} ORDER BY submitted_at DESC LIMIT ? OFFSET ?`)
+    .bind(...binds, filters.perPage, offset)
+    .all<RsvpRow>()
 
   return {
     rsvps: rows.results,
@@ -126,7 +132,7 @@ export type AdminEditResult =
 export async function updateRsvpWithCapacityGuard(
   db: D1Database,
   rsvpId: string,
-  input: RsvpEditInput
+  input: RsvpEditInput,
 ): Promise<AdminEditResult> {
   const existing = await getRsvp(db, rsvpId)
   if (!existing) throw new Error(`RSVP not found: ${rsvpId}`)
@@ -157,7 +163,7 @@ export async function updateRsvpWithCapacityGuard(
       const otherAttending = await db
         .prepare(
           `SELECT COALESCE(SUM(party_total), 0) as total FROM rsvps
-           WHERE event_id = ? AND status = 'attending' AND id != ?`
+           WHERE event_id = ? AND status = 'attending' AND id != ?`,
         )
         .bind(existing.event_id, rsvpId)
         .first<{ total: number }>()
@@ -179,21 +185,60 @@ export async function updateRsvpWithCapacityGuard(
   const sets: string[] = ['updated_at = ?']
   const binds: unknown[] = [now]
 
-  if (input.name !== undefined) { sets.push('name = ?'); binds.push(input.name) }
-  if (input.email !== undefined) { sets.push('email = ?'); binds.push(input.email) }
-  if (input.phone !== undefined) { sets.push('phone = ?'); binds.push(input.phone) }
-  if (input.adults !== undefined) { sets.push('adults = ?'); binds.push(input.adults) }
-  if (input.parentsCount !== undefined) { sets.push('parents_count = ?'); binds.push(input.parentsCount) }
-  if (input.siblingsCount !== undefined) { sets.push('siblings_count = ?'); binds.push(input.siblingsCount) }
-  if (input.childrenCount !== undefined) { sets.push('children_count = ?'); binds.push(input.childrenCount) }
-  if (input.childrenAges !== undefined) { sets.push('children_ages = ?'); binds.push(input.childrenAges) }
-  if (input.dietary !== undefined) { sets.push('dietary = ?'); binds.push(input.dietary) }
-  if (input.notes !== undefined) { sets.push('notes = ?'); binds.push(input.notes) }
-  if (input.answers !== undefined) { sets.push('answers = ?'); binds.push(input.answers) }
-  if (input.status !== undefined) { sets.push('status = ?'); binds.push(input.status) }
+  if (input.name !== undefined) {
+    sets.push('name = ?')
+    binds.push(input.name)
+  }
+  if (input.email !== undefined) {
+    sets.push('email = ?')
+    binds.push(input.email)
+  }
+  if (input.phone !== undefined) {
+    sets.push('phone = ?')
+    binds.push(input.phone)
+  }
+  if (input.adults !== undefined) {
+    sets.push('adults = ?')
+    binds.push(input.adults)
+  }
+  if (input.parentsCount !== undefined) {
+    sets.push('parents_count = ?')
+    binds.push(input.parentsCount)
+  }
+  if (input.siblingsCount !== undefined) {
+    sets.push('siblings_count = ?')
+    binds.push(input.siblingsCount)
+  }
+  if (input.childrenCount !== undefined) {
+    sets.push('children_count = ?')
+    binds.push(input.childrenCount)
+  }
+  if (input.childrenAges !== undefined) {
+    sets.push('children_ages = ?')
+    binds.push(input.childrenAges)
+  }
+  if (input.dietary !== undefined) {
+    sets.push('dietary = ?')
+    binds.push(input.dietary)
+  }
+  if (input.notes !== undefined) {
+    sets.push('notes = ?')
+    binds.push(input.notes)
+  }
+  if (input.answers !== undefined) {
+    sets.push('answers = ?')
+    binds.push(input.answers)
+  }
+  if (input.status !== undefined) {
+    sets.push('status = ?')
+    binds.push(input.status)
+  }
 
   binds.push(rsvpId)
-  await db.prepare(`UPDATE rsvps SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
+  await db
+    .prepare(`UPDATE rsvps SET ${sets.join(', ')} WHERE id = ?`)
+    .bind(...binds)
+    .run()
   return { success: true }
 }
 
@@ -220,13 +265,18 @@ export async function promoteFromWaitlist(db: D1Database, rsvpId: string): Promi
   // If no capacity cap, promote directly
   if (!event?.max_guests_total) {
     const now = new Date().toISOString()
-    await db.prepare("UPDATE rsvps SET status = 'attending', updated_at = ? WHERE id = ?").bind(now, rsvpId).run()
+    await db
+      .prepare("UPDATE rsvps SET status = 'attending', updated_at = ? WHERE id = ?")
+      .bind(now, rsvpId)
+      .run()
     return { success: true }
   }
 
   // Atomic conditional UPDATE: only promote if capacity allows
   const now = new Date().toISOString()
-  const result = await db.prepare(`
+  const result = await db
+    .prepare(
+      `
     UPDATE rsvps SET status = 'attending', updated_at = ?
     WHERE id = ?
       AND (
@@ -234,7 +284,10 @@ export async function promoteFromWaitlist(db: D1Database, rsvpId: string): Promi
           FROM rsvps r2
          WHERE r2.event_id = ? AND r2.status = 'attending'
       ) + ? <= (SELECT max_guests_total FROM events WHERE id = ?)
-  `).bind(now, rsvpId, rsvp.event_id, rsvp.party_total, rsvp.event_id).run()
+  `,
+    )
+    .bind(now, rsvpId, rsvp.event_id, rsvp.party_total, rsvp.event_id)
+    .run()
 
   if (result.meta.changes === 0) return { success: false, reason: 'no_capacity' }
   return { success: true }

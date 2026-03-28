@@ -12,14 +12,20 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { getEvent, getEventStats } from '../domain/adminEvents'
 import {
-  listRsvps, getRsvp, updateRsvpWithCapacityGuard,
-  promoteFromWaitlist, deleteRsvp,
+  listRsvps,
+  getRsvp,
+  updateRsvpWithCapacityGuard,
+  promoteFromWaitlist,
+  deleteRsvp,
 } from '../domain/adminRsvps'
 import { requireAdmin } from '../middleware/requireAdmin'
 import { writeAuditLog } from '../domain/audit'
 
 /** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
-function fireAuditLog(c: { executionCtx?: { waitUntil: (p: Promise<unknown>) => void } }, p: Promise<void>): void {
+function fireAuditLog(
+  c: { executionCtx?: { waitUntil: (p: Promise<unknown>) => void } },
+  p: Promise<void>,
+): void {
   try {
     c.executionCtx?.waitUntil(p.catch(() => {}))
   } catch {
@@ -38,7 +44,12 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
   const stats = await getEventStats(c.env.DB, event.id)
 
   const page = Math.max(1, Number(c.req.query('page') || 1))
-  const statusFilter = c.req.query('status') as 'attending' | 'waitlist' | 'not_attending' | 'maybe' | undefined
+  const statusFilter = c.req.query('status') as
+    | 'attending'
+    | 'waitlist'
+    | 'not_attending'
+    | 'maybe'
+    | undefined
   const nameSearch = c.req.query('name') || undefined
   const dateFrom = c.req.query('date_from') || undefined
   const dateTo = c.req.query('date_to') || undefined
@@ -54,7 +65,10 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
 
   const flash = c.req.query('flash')
 
-  return c.html(adminPage(`RSVPs: ${escHtml(event.title)} — RSVPex Admin`, `
+  return c.html(
+    adminPage(
+      `RSVPs: ${escHtml(event.title)} — RSVPex Admin`,
+      `
     <div class="page-header">
       <h1>RSVPs: ${escHtml(event.title)}</h1>
       <a href="/rsvp/admin/events/${event.id}" class="btn">← Event</a>
@@ -99,10 +113,11 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
         <th>Name</th><th>Email</th><th>Status</th><th>Party</th><th>Dietary</th><th>Submitted</th><th>Actions</th>
       </tr></thead>
       <tbody>
-        ${result.rsvps.map(r => {
-          const dietary = JSON.parse(r.dietary || '[]') as Array<{ kind: string; value?: string }>
-          const dietaryText = dietary.map(d => d.value || d.kind).join(', ')
-          return `<tr>
+        ${result.rsvps
+          .map((r) => {
+            const dietary = JSON.parse(r.dietary || '[]') as Array<{ kind: string; value?: string }>
+            const dietaryText = dietary.map((d) => d.value || d.kind).join(', ')
+            return `<tr>
             <td>${escHtml(r.name)}</td>
             <td>${r.email ? escHtml(r.email) : '—'}</td>
             <td><span class="badge badge-${r.status}">${r.status}</span></td>
@@ -111,14 +126,19 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
             <td>${r.submitted_at.slice(0, 10)}</td>
             <td>
               <a href="/rsvp/admin/events/${event.id}/rsvps/${r.id}/edit">Edit</a>
-              ${r.status === 'waitlist' ? `
+              ${
+                r.status === 'waitlist'
+                  ? `
                 · <form method="POST" action="/rsvp/admin/events/${event.id}/rsvps/${r.id}/promote" style="display:inline">
                     <button type="submit" class="btn" style="padding:.2rem .5rem;font-size:.85rem">Promote</button>
                   </form>
-              ` : ''}
+              `
+                  : ''
+              }
             </td>
           </tr>`
-        }).join('')}
+          })
+          .join('')}
       </tbody>
     </table>
     ${paginationHtml(result.page, result.totalPages, `/rsvp/admin/events/${event.id}/rsvps`, { status: statusFilter, name: nameSearch, date_from: dateFrom, date_to: dateTo })}
@@ -135,7 +155,9 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
         </form>
       </div>
     </details>
-  `))
+  `,
+    ),
+  )
 })
 
 // GET /rsvp/admin/events/:id/rsvps/:rsvpId/edit
@@ -145,11 +167,16 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => {
   const rsvp = await getRsvp(c.env.DB, c.req.param('rsvpId'))
   if (!rsvp || rsvp.event_id !== event.id) return c.notFound()
   const stats = await getEventStats(c.env.DB, event.id)
-  return c.html(adminPage(`Edit RSVP — RSVPex Admin`, `
+  return c.html(
+    adminPage(
+      `Edit RSVP — RSVPex Admin`,
+      `
     <h1>Edit RSVP</h1>
     <div class="capacity-meter">Event capacity: ${stats.attending} attending${stats.capacity != null ? ` / ${stats.capacity} max` : ' (unlimited)'}</div>
     ${rsvpEditForm(event.id, rsvp)}
-  `))
+  `,
+    ),
+  )
 })
 
 // POST /rsvp/admin/events/:id/rsvps/:rsvpId/edit
@@ -180,13 +207,16 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => 
   if (!result.success) {
     return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=capacity_error`, 303)
   }
-  fireAuditLog(c, writeAuditLog(c.env.DB, {
-    actorId: c.get('adminUserId'),
-    entityType: 'rsvp',
-    entityId: rsvp.id,
-    action: 'rsvp_edit',
-    diff: { status: d.status },
-  }))
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'rsvp',
+      entityId: rsvp.id,
+      action: 'rsvp_edit',
+      diff: { status: d.status },
+    }),
+  )
   return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=saved`, 303)
 })
 
@@ -196,13 +226,16 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/promote', async (c) 
   if (!event) return c.notFound()
   const result = await promoteFromWaitlist(c.env.DB, c.req.param('rsvpId'))
   if (result.success) {
-    fireAuditLog(c, writeAuditLog(c.env.DB, {
-      actorId: c.get('adminUserId'),
-      entityType: 'rsvp',
-      entityId: c.req.param('rsvpId'),
-      action: 'rsvp_promote',
-      diff: null,
-    }))
+    fireAuditLog(
+      c,
+      writeAuditLog(c.env.DB, {
+        actorId: c.get('adminUserId'),
+        entityType: 'rsvp',
+        entityId: c.req.param('rsvpId'),
+        action: 'rsvp_promote',
+        diff: null,
+      }),
+    )
     return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=promoted`, 303)
   }
   return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=no_capacity`, 303)
@@ -214,13 +247,16 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/delete', async (c) =
   if (!event) return c.notFound()
   const rsvpId = c.req.param('rsvpId')
   await deleteRsvp(c.env.DB, rsvpId)
-  fireAuditLog(c, writeAuditLog(c.env.DB, {
-    actorId: c.get('adminUserId'),
-    entityType: 'rsvp',
-    entityId: rsvpId,
-    action: 'rsvp_delete',
-    diff: null,
-  }))
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'rsvp',
+      entityId: rsvpId,
+      action: 'rsvp_delete',
+      diff: null,
+    }),
+  )
   return c.redirect(`/rsvp/admin/events/${event.id}/rsvps`, 303)
 })
 
@@ -241,9 +277,16 @@ const rsvpEditSchema = z.object({
 })
 
 type RsvpRow = {
-  id: string; name: string; email: string | null; phone: string | null;
-  adults: number; parents_count: number; siblings_count: number;
-  children_count: number; notes: string | null; status: string;
+  id: string
+  name: string
+  email: string | null
+  phone: string | null
+  adults: number
+  parents_count: number
+  siblings_count: number
+  children_count: number
+  notes: string | null
+  status: string
 }
 
 function rsvpEditForm(eventId: string, rsvp: RsvpRow): string {
@@ -278,18 +321,30 @@ function rsvpEditForm(eventId: string, rsvp: RsvpRow): string {
   </form>`
 }
 
-function paginationHtml(current: number, total: number, base: string, params: Record<string, string | undefined>): string {
+function paginationHtml(
+  current: number,
+  total: number,
+  base: string,
+  params: Record<string, string | undefined>,
+): string {
   if (total <= 1) return ''
-  const p = Object.entries(params).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v!)}`).join('&')
+  const p = Object.entries(params)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k}=${encodeURIComponent(v!)}`)
+    .join('&')
   const sep = p ? '&' : '?'
   const pages = Array.from({ length: total }, (_, i) => i + 1)
   return `<div class="pagination">
-    ${pages.map(n => `<a href="${base}?page=${n}${p ? sep + p : ''}" class="${n === current ? 'active' : ''}">${n}</a>`).join('')}
+    ${pages.map((n) => `<a href="${base}?page=${n}${p ? sep + p : ''}" class="${n === current ? 'active' : ''}">${n}</a>`).join('')}
   </div>`
 }
 
 function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 function adminPage(title: string, content: string): string {

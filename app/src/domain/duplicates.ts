@@ -14,12 +14,10 @@
 
 import { withSpan } from './tracing'
 
-export type ExactDuplicateResult =
-  | { isDuplicate: true;  rsvpToken: string }
-  | { isDuplicate: false }
+export type ExactDuplicateResult = { isDuplicate: true; rsvpToken: string } | { isDuplicate: false }
 
 export type HeuristicDuplicateResult =
-  | { isDuplicate: true;  rsvpToken: string }
+  | { isDuplicate: true; rsvpToken: string }
   | { isDuplicate: false }
 
 /**
@@ -60,7 +58,10 @@ async function _isDuplicate(
   }
 
   const sql = `SELECT rsvp_token FROM rsvps WHERE (${conditions.join(' OR ')}) LIMIT 1`
-  const row = await db.prepare(sql).bind(...bindings).first<{ rsvp_token: string }>()
+  const row = await db
+    .prepare(sql)
+    .bind(...bindings)
+    .first<{ rsvp_token: string }>()
 
   if (row) return { isDuplicate: true, rsvpToken: row.rsvp_token }
   return { isDuplicate: false }
@@ -124,7 +125,10 @@ async function _isHeuristicDuplicate(
        AND (${contactClause})
      LIMIT 1`
 
-  const row = await db.prepare(sql).bind(...bindings).first<{ rsvp_token: string }>()
+  const row = await db
+    .prepare(sql)
+    .bind(...bindings)
+    .first<{ rsvp_token: string }>()
 
   if (row) return { isDuplicate: true, rsvpToken: row.rsvp_token }
   return { isDuplicate: false }

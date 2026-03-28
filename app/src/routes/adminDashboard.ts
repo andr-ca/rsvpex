@@ -30,10 +30,26 @@ async function getDashboardStats(db: D1Database): Promise<DashboardStats> {
   const now = new Date().toISOString()
   try {
     const [activeRes, upcomingRes, totalRes, recentRes] = await Promise.all([
-      db.prepare("SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at <= ? AND (archived_at IS NULL)").bind(now).first<{ n: number }>(),
-      db.prepare("SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at > ? AND (archived_at IS NULL)").bind(now).first<{ n: number }>(),
-      db.prepare("SELECT COUNT(*) as n FROM events WHERE archived_at IS NULL").first<{ n: number }>(),
-      db.prepare("SELECT id, title, status, start_at, slug FROM events WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 5").all<EventSummary>(),
+      db
+        .prepare(
+          "SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at <= ? AND (archived_at IS NULL)",
+        )
+        .bind(now)
+        .first<{ n: number }>(),
+      db
+        .prepare(
+          "SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at > ? AND (archived_at IS NULL)",
+        )
+        .bind(now)
+        .first<{ n: number }>(),
+      db
+        .prepare('SELECT COUNT(*) as n FROM events WHERE archived_at IS NULL')
+        .first<{ n: number }>(),
+      db
+        .prepare(
+          'SELECT id, title, status, start_at, slug FROM events WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 5',
+        )
+        .all<EventSummary>(),
     ])
     return {
       active: activeRes?.n ?? 0,
@@ -47,7 +63,9 @@ async function getDashboardStats(db: D1Database): Promise<DashboardStats> {
   }
 }
 
-export async function adminDashboardHandler(c: Context<{ Bindings: Env; Variables: { adminUserId: string } }>) {
+export async function adminDashboardHandler(
+  c: Context<{ Bindings: Env; Variables: { adminUserId: string } }>,
+) {
   const stats = await getDashboardStats(c.env.DB)
   return c.html(`<!DOCTYPE html>
 <html lang="en">
@@ -109,19 +127,24 @@ export async function adminDashboardHandler(c: Context<{ Bindings: Env; Variable
     <h2 style="margin:0">Recent Events</h2>
     <a href="/rsvp/admin/events/new" class="btn">+ New Event</a>
   </div>
-  ${stats.recentEvents.length === 0
-    ? '<p>No events yet. <a href="/rsvp/admin/events/new">Create your first event.</a></p>'
-    : `<table>
+  ${
+    stats.recentEvents.length === 0
+      ? '<p>No events yet. <a href="/rsvp/admin/events/new">Create your first event.</a></p>'
+      : `<table>
         <thead><tr><th>Title</th><th>Status</th><th>Starts</th><th>Actions</th></tr></thead>
         <tbody>
-          ${stats.recentEvents.map(e => `
+          ${stats.recentEvents
+            .map(
+              (e) => `
             <tr>
               <td><a href="/rsvp/admin/events/${e.id}">${e.title.replace(/</g, '&lt;')}</a></td>
               <td><span class="badge badge-${e.status}">${e.status}</span></td>
               <td>${e.start_at.slice(0, 10)}</td>
               <td><a href="/rsvp/admin/events/${e.id}/rsvps">RSVPs</a></td>
             </tr>
-          `).join('')}
+          `,
+            )
+            .join('')}
         </tbody>
       </table>`
   }

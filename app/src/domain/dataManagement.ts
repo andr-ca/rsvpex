@@ -23,9 +23,19 @@ export type RsvpExportRow = {
 }
 
 const CSV_HEADERS = [
-  'id', 'name', 'email', 'phone', 'status',
-  'adults', 'parents_count', 'siblings_count', 'children_count', 'party_total',
-  'dietary', 'notes', 'submitted_at',
+  'id',
+  'name',
+  'email',
+  'phone',
+  'status',
+  'adults',
+  'parents_count',
+  'siblings_count',
+  'children_count',
+  'party_total',
+  'dietary',
+  'notes',
+  'submitted_at',
 ] as const
 
 /**
@@ -36,7 +46,7 @@ export function dietaryToText(json: string): string {
   try {
     const arr = JSON.parse(json) as Array<{ kind: string; value?: string }>
     if (!Array.isArray(arr)) return ''
-    return arr.map(d => d.value || d.kind).join(', ')
+    return arr.map((d) => d.value || d.kind).join(', ')
   } catch {
     return ''
   }
@@ -84,7 +94,7 @@ export function rsvpsToCsv(rsvps: RsvpExportRow[]): string {
  * Convert RSVP rows to JSON export array (includes rsvp_token).
  */
 export function rsvpsToJson(rsvps: RsvpExportRow[]): object[] {
-  return rsvps.map(r => ({
+  return rsvps.map((r) => ({
     id: r.id,
     name: r.name,
     email: r.email,
@@ -104,8 +114,15 @@ export function rsvpsToJson(rsvps: RsvpExportRow[]): object[] {
 
 /** IMPORT CSV HEADERS (exactly this order, case-insensitive match) */
 export const IMPORT_HEADERS = [
-  'name', 'email', 'phone', 'status',
-  'adults', 'parents_count', 'siblings_count', 'children_count', 'notes',
+  'name',
+  'email',
+  'phone',
+  'status',
+  'adults',
+  'parents_count',
+  'siblings_count',
+  'children_count',
+  'notes',
 ] as const
 
 export type ImportRow = {
@@ -192,11 +209,11 @@ export function parseImportCsv(csvText: string): {
   headerError?: string
   rows: Array<{ rowNum: number; data: ImportRow } | { rowNum: number; error: string }>
 } {
-  const lines = csvText.split(/\r?\n/).filter(l => l.trim())
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim())
   if (lines.length === 0) return { valid: false, headerError: 'Empty file', rows: [] }
 
   const headerLine = lines[0].toLowerCase()
-  const parsedHeaders = headerLine.split(',').map(h => h.trim())
+  const parsedHeaders = headerLine.split(',').map((h) => h.trim())
 
   // Validate required column 'name' is present
   if (!parsedHeaders.includes('name')) {
@@ -222,7 +239,10 @@ export function parseImportCsv(csvText: string): {
     const validStatuses = ['attending', 'not_attending', 'maybe', 'waitlist']
     const status = parsed['status']?.trim()
     if (status && !validStatuses.includes(status)) {
-      rows.push({ rowNum, error: `Invalid status: "${status}". Must be one of: ${validStatuses.join(', ')}` })
+      rows.push({
+        rowNum,
+        error: `Invalid status: "${status}". Must be one of: ${validStatuses.join(', ')}`,
+      })
       continue
     }
 

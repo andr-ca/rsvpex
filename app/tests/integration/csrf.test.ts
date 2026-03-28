@@ -9,13 +9,18 @@ import { hashPassword, createSession } from '../../src/domain/adminAuth'
 
 const TEST_PASSWORD = 'correct-horse-battery-staple'
 
-async function seedAdminAndLogin(db: D1Database): Promise<{ sessionCookie: string; adminId: string }> {
+async function seedAdminAndLogin(
+  db: D1Database,
+): Promise<{ sessionCookie: string; adminId: string }> {
   const id = crypto.randomUUID()
   const hash = await hashPassword(TEST_PASSWORD)
-  await db.prepare(
-    `INSERT INTO admin_users (id, email, password_hash, failed_login_attempts, is_active)
-     VALUES (?, ?, ?, 0, 1)`
-  ).bind(id, `csrf-${id.slice(0, 6)}@test.com`, hash).run()
+  await db
+    .prepare(
+      `INSERT INTO admin_users (id, email, password_hash, failed_login_attempts, is_active)
+     VALUES (?, ?, ?, 0, 1)`,
+    )
+    .bind(id, `csrf-${id.slice(0, 6)}@test.com`, hash)
+    .run()
   const sessionId = await createSession(db, id, 7)
   return { sessionCookie: `session_id=${sessionId}`, adminId: id }
 }
@@ -37,7 +42,9 @@ async function getCsrfToken(sessionCookie: string, path = '/rsvp/admin/'): Promi
 
 describe('CSRF protection on admin routes', () => {
   beforeEach(async () => {
-    await env.DB.exec('DELETE FROM rsvps; DELETE FROM events; DELETE FROM admin_users; DELETE FROM sessions; DELETE FROM audit_logs;')
+    await env.DB.exec(
+      'DELETE FROM rsvps; DELETE FROM events; DELETE FROM admin_users; DELETE FROM sessions; DELETE FROM audit_logs;',
+    )
   })
 
   it('GET admin page sets csrf_token cookie', async () => {
@@ -72,7 +79,7 @@ describe('CSRF protection on admin routes', () => {
       env,
     )
     expect(res.status).toBe(403)
-    const json = await res.json() as { error: string }
+    const json = (await res.json()) as { error: string }
     expect(json.error).toBe('csrf_token_missing')
   })
 
@@ -122,14 +129,18 @@ describe('CSRF protection on admin routes', () => {
       env,
     )
     expect(res.status).toBe(403)
-    const json = await res.json() as { error: string }
+    const json = (await res.json()) as { error: string }
     expect(json.error).toBe('csrf_token_mismatch')
   })
 
   it('POST with Origin header mismatch returns 403', async () => {
     const { sessionCookie } = await seedAdminAndLogin(env.DB)
     const csrfToken = crypto.randomUUID()
-    const body = new URLSearchParams({ title: 'X', timezone: 'UTC', start_at: '2099-01-01T00:00:00Z' })
+    const body = new URLSearchParams({
+      title: 'X',
+      timezone: 'UTC',
+      start_at: '2099-01-01T00:00:00Z',
+    })
     const res = await app.fetch(
       new Request('http://localhost/rsvp/admin/events', {
         method: 'POST',
@@ -144,7 +155,7 @@ describe('CSRF protection on admin routes', () => {
       { ...env, DEPLOYMENT_DOMAIN: 'https://rsvpex.example.com' } as typeof env,
     )
     expect(res.status).toBe(403)
-    const json = await res.json() as { error: string }
+    const json = (await res.json()) as { error: string }
     expect(json.error).toBe('origin_mismatch')
   })
 
@@ -153,8 +164,10 @@ describe('CSRF protection on admin routes', () => {
     const hash = await hashPassword(TEST_PASSWORD)
     await env.DB.prepare(
       `INSERT INTO admin_users (id, email, password_hash, failed_login_attempts, is_active)
-       VALUES (?, ?, ?, 0, 1)`
-    ).bind(id, 'csrf-exempt@test.com', hash).run()
+       VALUES (?, ?, ?, 0, 1)`,
+    )
+      .bind(id, 'csrf-exempt@test.com', hash)
+      .run()
 
     const body = new URLSearchParams({
       email: 'csrf-exempt@test.com',
@@ -175,8 +188,10 @@ describe('CSRF protection on admin routes', () => {
   it('public RSVP POST is exempt from CSRF', async () => {
     await env.DB.prepare(
       `INSERT INTO events (id, title, slug, status, visibility, timezone, start_at, max_guests_total, max_party_size_per_rsvp, locale)
-       VALUES (?, 'CSRF Test', 'csrf-pub', 'published', 'public', 'UTC', '2099-01-01T00:00:00Z', 100, 10, 'en')`
-    ).bind(crypto.randomUUID()).run()
+       VALUES (?, 'CSRF Test', 'csrf-pub', 'published', 'public', 'UTC', '2099-01-01T00:00:00Z', 100, 10, 'en')`,
+    )
+      .bind(crypto.randomUUID())
+      .run()
 
     const body = new URLSearchParams({
       name: 'Test Guest',

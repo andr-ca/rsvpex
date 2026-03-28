@@ -24,5 +24,5 @@ export const requireAdmin = createMiddleware<{ Bindings: Env; Variables: { admin
     }
     c.set('adminUserId', session.admin_user_id)
     await next()
-  }
+  },
 )

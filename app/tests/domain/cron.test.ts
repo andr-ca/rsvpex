@@ -4,10 +4,7 @@
  * @req SEC-04 — audit log purge
  */
 import { describe, it, expect } from 'vitest'
-import {
-  buildReminderMessages,
-  purgeOldAuditLogs,
-} from '../../src/domain/cron'
+import { buildReminderMessages, purgeOldAuditLogs } from '../../src/domain/cron'
 
 // ── buildReminderMessages ─────────────────────────────────────────────────────
 

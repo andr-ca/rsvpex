@@ -47,7 +47,7 @@ export type EventRow = {
 export function buildGuestConfirmationEmail(
   rsvp: RsvpRow,
   event: EventRow,
-  baseUrl: string
+  baseUrl: string,
 ): EmailPayload {
   const editLink = `${baseUrl}/rsvp/${event.slug}?rid=${rsvp.rsvp_token}`
   const subject = `You're registered for ${event.title}`
@@ -70,7 +70,7 @@ export function buildGuestConfirmationEmail(
 export function buildAdminAlertEmail(
   rsvp: RsvpRow,
   event: EventRow,
-  adminEmail: string
+  adminEmail: string,
 ): EmailPayload {
   const subject = `New RSVP for ${event.title}: ${rsvp.name}`
   const html = `
@@ -93,7 +93,7 @@ export function buildAdminAlertEmail(
 export function buildCapacityThresholdEmail(
   event: EventRow,
   threshold: 80 | 100,
-  adminEmail: string
+  adminEmail: string,
 ): EmailPayload {
   const subject = `${event.title} is at ${threshold}% capacity`
   const html = `<p><strong>${escHtml(event.title)}</strong> has reached ${threshold}% capacity.</p>`
@@ -105,11 +105,7 @@ export function buildCapacityThresholdEmail(
  * Build SMS confirmation message (≤320 chars).
  * @req NOTIF-05
  */
-export function buildSmsMessage(
-  rsvp: RsvpRow,
-  event: EventRow,
-  baseUrl: string
-): string {
+export function buildSmsMessage(rsvp: RsvpRow, event: EventRow, baseUrl: string): string {
   const editLink = `${baseUrl}/rsvp/${event.slug}?rid=${rsvp.rsvp_token}`
   const msg = `Confirmed for ${event.title}. Party: ${rsvp.party_total}. Edit: ${editLink}`
   return msg.slice(0, 320)
@@ -123,7 +119,7 @@ export function buildSmsMessage(
 export async function idempotencyAlreadySent(
   db: D1Database,
   rsvpId: string,
-  notificationType: string
+  notificationType: string,
 ): Promise<boolean> {
   const row = await db
     .prepare('SELECT id FROM notification_log WHERE rsvp_id = ? AND notification_type = ? LIMIT 1')
@@ -139,11 +135,13 @@ export async function idempotencyAlreadySent(
 export async function markNotificationSent(
   db: D1Database,
   rsvpId: string,
-  notificationType: string
+  notificationType: string,
 ): Promise<void> {
   const id = crypto.randomUUID()
   await db
-    .prepare('INSERT OR IGNORE INTO notification_log (id, rsvp_id, notification_type) VALUES (?, ?, ?)')
+    .prepare(
+      'INSERT OR IGNORE INTO notification_log (id, rsvp_id, notification_type) VALUES (?, ?, ?)',
+    )
     .bind(id, rsvpId, notificationType)
     .run()
 }
@@ -153,10 +151,7 @@ export async function markNotificationSent(
  * Returns true if the threshold should trigger a notification.
  * @req NOTIF-03
  */
-export function shouldNotifyThreshold(
-  event: EventRow,
-  threshold: 80 | 100
-): boolean {
+export function shouldNotifyThreshold(event: EventRow, threshold: 80 | 100): boolean {
   if (event.max_guests_total === null) return false
   if (threshold === 80) return event.threshold_80_notified_at === null
   if (threshold === 100) return event.threshold_100_notified_at === null
@@ -168,10 +163,7 @@ export function shouldNotifyThreshold(
  * Returns 100, 80, or null (if below 80%).
  * @req NOTIF-03
  */
-export function currentThreshold(
-  attending: number,
-  maxGuests: number | null
-): 100 | 80 | null {
+export function currentThreshold(attending: number, maxGuests: number | null): 100 | 80 | null {
   if (maxGuests === null || maxGuests === 0) return null
   const pct = (attending / maxGuests) * 100
   if (pct >= 100) return 100

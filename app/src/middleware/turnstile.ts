@@ -42,9 +42,7 @@ export function turnstileVerify(): MiddlewareHandler<{ Bindings: Env }> {
     }
 
     const ip =
-      c.req.raw.headers.get('CF-Connecting-IP') ??
-      c.req.raw.headers.get('X-Forwarded-For') ??
-      ''
+      c.req.raw.headers.get('CF-Connecting-IP') ?? c.req.raw.headers.get('X-Forwarded-For') ?? ''
 
     const formData = new FormData()
     formData.append('secret', secretKey)

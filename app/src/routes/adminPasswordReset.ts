@@ -10,7 +10,12 @@
  */
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { createResetToken, consumeResetToken, hashPassword, clearLockout } from '../domain/adminAuth'
+import {
+  createResetToken,
+  consumeResetToken,
+  hashPassword,
+  clearLockout,
+} from '../domain/adminAuth'
 
 const adminPasswordResetRouter = new Hono<{ Bindings: Env }>()
 
@@ -23,7 +28,10 @@ const confirmSchema = z.object({
 const RESET_EXPIRY_MINUTES = 15
 
 adminPasswordResetRouter.get('/password-reset', (c) => {
-  return c.html(page('Password Reset', `
+  return c.html(
+    page(
+      'Password Reset',
+      `
     <h1>Reset Password</h1>
     <p>Enter your email address and we'll send a reset link.</p>
     <form method="POST" action="/rsvp/admin/password-reset">
@@ -32,19 +40,23 @@ adminPasswordResetRouter.get('/password-reset', (c) => {
       <button type="submit">Send Reset Link</button>
     </form>
     <p><a href="/rsvp/admin/login">Back to login</a></p>
-  `))
+  `,
+    ),
+  )
 })
 
 adminPasswordResetRouter.post('/password-reset', async (c) => {
   const body = await c.req.parseBody()
   const parsed = requestSchema.safeParse(body)
   if (!parsed.success) {
-    return c.html(page('Password Reset', '<h1>Reset Password</h1><p class="error">Invalid email.</p>'), 400)
+    return c.html(
+      page('Password Reset', '<h1>Reset Password</h1><p class="error">Invalid email.</p>'),
+      400,
+    )
   }
 
   const { email } = parsed.data
-  const user = await c.env.DB
-    .prepare('SELECT id FROM admin_users WHERE email = ? LIMIT 1')
+  const user = await c.env.DB.prepare('SELECT id FROM admin_users WHERE email = ? LIMIT 1')
     .bind(email.toLowerCase())
     .first<{ id: string }>()
 
@@ -55,16 +67,24 @@ adminPasswordResetRouter.post('/password-reset', async (c) => {
     await sendResetEmail(c.env, email, resetUrl)
   }
 
-  return c.html(page('Password Reset Sent', `
+  return c.html(
+    page(
+      'Password Reset Sent',
+      `
     <h1>Check Your Email</h1>
     <p>If an account exists for that email, a reset link has been sent. It expires in ${RESET_EXPIRY_MINUTES} minutes.</p>
     <p><a href="/rsvp/admin/login">Back to login</a></p>
-  `))
+  `,
+    ),
+  )
 })
 
 adminPasswordResetRouter.get('/password-reset/confirm', (c) => {
   const token = c.req.query('token') ?? ''
-  return c.html(page('Set New Password', `
+  return c.html(
+    page(
+      'Set New Password',
+      `
     <h1>Set New Password</h1>
     <form method="POST" action="/rsvp/admin/password-reset/confirm">
       <input type="hidden" name="token" value="${escHtml(token)}">
@@ -72,7 +92,9 @@ adminPasswordResetRouter.get('/password-reset/confirm', (c) => {
       <input id="password" name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password">
       <button type="submit">Set Password</button>
     </form>
-  `))
+  `,
+    ),
+  )
 })
 
 adminPasswordResetRouter.post('/password-reset/confirm', async (c) => {
@@ -90,8 +112,7 @@ adminPasswordResetRouter.post('/password-reset/confirm', async (c) => {
   }
 
   const newHash = await hashPassword(password)
-  await c.env.DB
-    .prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?')
+  await c.env.DB.prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?')
     .bind(newHash, result.adminUserId)
     .run()
 
@@ -143,5 +164,9 @@ function page(title: string, body: string): string {
 }
 
 function escHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }

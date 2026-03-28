@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { isDuplicate, isHeuristicDuplicate } from '../../src/domain/duplicates'
 
 async function seedEvent(db: D1Database): Promise<string> {
@@ -33,7 +33,9 @@ async function seedRsvp(
     ...overrides,
   }
   const cols = Object.keys(defaults).join(', ')
-  const placeholders = Object.keys(defaults).map(() => '?').join(', ')
+  const placeholders = Object.keys(defaults)
+    .map(() => '?')
+    .join(', ')
   await db
     .prepare(`INSERT INTO rsvps (${cols}) VALUES (${placeholders})`)
     .bind(...Object.values(defaults))
@@ -82,7 +84,13 @@ describe('isDuplicate', () => {
 describe('isHeuristicDuplicate', () => {
   it('returns false when no similar recent RSVP', async () => {
     const eventId = await seedEvent(env.DB)
-    const result = await isHeuristicDuplicate(env.DB, eventId, 'Alice Smith', 'alice@example.com', null)
+    const result = await isHeuristicDuplicate(
+      env.DB,
+      eventId,
+      'Alice Smith',
+      'alice@example.com',
+      null,
+    )
     expect(result.isDuplicate).toBe(false)
   })
 
@@ -93,7 +101,13 @@ describe('isHeuristicDuplicate', () => {
       email: 'alice@example.com',
       submitted_at: new Date(Date.now() - 60_000).toISOString(), // 1 min ago
     })
-    const result = await isHeuristicDuplicate(env.DB, eventId, 'Alice Smith', 'alice@example.com', null)
+    const result = await isHeuristicDuplicate(
+      env.DB,
+      eventId,
+      'Alice Smith',
+      'alice@example.com',
+      null,
+    )
     expect(result.isDuplicate).toBe(true)
     if (result.isDuplicate) expect(result.rsvpToken).toBe(token)
   })
@@ -106,7 +120,14 @@ describe('isHeuristicDuplicate', () => {
       submitted_at: new Date(Date.now() - 10 * 60_000).toISOString(), // 10 min ago
     })
     // Use a 5-minute window → 10 min ago is outside
-    const result = await isHeuristicDuplicate(env.DB, eventId, 'Alice Smith', 'alice@example.com', null, 5 * 60_000)
+    const result = await isHeuristicDuplicate(
+      env.DB,
+      eventId,
+      'Alice Smith',
+      'alice@example.com',
+      null,
+      5 * 60_000,
+    )
     expect(result.isDuplicate).toBe(false)
   })
 
@@ -117,7 +138,13 @@ describe('isHeuristicDuplicate', () => {
       email: 'alice@example.com',
       submitted_at: new Date().toISOString(),
     })
-    const result = await isHeuristicDuplicate(env.DB, eventId, 'ALICE SMITH', 'alice@example.com', null)
+    const result = await isHeuristicDuplicate(
+      env.DB,
+      eventId,
+      'ALICE SMITH',
+      'alice@example.com',
+      null,
+    )
     expect(result.isDuplicate).toBe(true)
     if (result.isDuplicate) expect(result.rsvpToken).toBe(token)
   })

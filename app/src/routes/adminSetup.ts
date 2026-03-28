@@ -20,7 +20,10 @@ const setupSchema = z.object({
 })
 
 adminSetupRouter.get('/setup', (c) => {
-  return c.html(page('Admin Setup', `
+  return c.html(
+    page(
+      'Admin Setup',
+      `
     <h1>Admin Setup</h1>
     <p>Create the first administrator account.</p>
     <form method="POST" action="/rsvp/admin/setup">
@@ -32,7 +35,9 @@ adminSetupRouter.get('/setup', (c) => {
       <input id="password" name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password">
       <button type="submit">Create Admin Account</button>
     </form>
-  `))
+  `,
+    ),
+  )
 })
 
 adminSetupRouter.post('/setup', async (c) => {
@@ -53,8 +58,10 @@ adminSetupRouter.post('/setup', async (c) => {
   const id = crypto.randomUUID()
 
   await c.env.DB.prepare(
-    `INSERT INTO admin_users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)`
-  ).bind(id, email.toLowerCase(), passwordHash, display_name ?? null).run()
+    `INSERT INTO admin_users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)`,
+  )
+    .bind(id, email.toLowerCase(), passwordHash, display_name ?? null)
+    .run()
 
   return c.redirect('/rsvp/admin/login', 303)
 })
@@ -82,5 +89,9 @@ function page(title: string, body: string): string {
 }
 
 function escHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }

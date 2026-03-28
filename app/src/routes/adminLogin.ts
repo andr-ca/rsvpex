@@ -27,7 +27,10 @@ const loginSchema = z.object({
 adminLoginRouter.get('/login', (c) => {
   const error = c.req.query('error')
   const reset = c.req.query('reset')
-  return c.html(page('Admin Login', `
+  return c.html(
+    page(
+      'Admin Login',
+      `
     <h1>Admin Login</h1>
     ${reset === 'success' ? '<p class="success">Password updated. Please log in with your new password.</p>' : ''}
     ${error === 'invalid' ? '<p class="error">Invalid email or password.</p>' : ''}
@@ -40,7 +43,9 @@ adminLoginRouter.get('/login', (c) => {
       <button type="submit">Log In</button>
       <p><a href="/rsvp/admin/password-reset">Forgot password?</a></p>
     </form>
-  `))
+  `,
+    ),
+  )
 })
 
 adminLoginRouter.post('/login', async (c) => {
@@ -52,8 +57,9 @@ adminLoginRouter.post('/login', async (c) => {
 
   const { email, password } = parsed.data
 
-  const user = await c.env.DB
-    .prepare('SELECT id, password_hash, failed_login_attempts, locked_until, is_active FROM admin_users WHERE email = ? LIMIT 1')
+  const user = await c.env.DB.prepare(
+    'SELECT id, password_hash, failed_login_attempts, locked_until, is_active FROM admin_users WHERE email = ? LIMIT 1',
+  )
     .bind(email.toLowerCase())
     .first<{
       id: string
@@ -70,10 +76,7 @@ adminLoginRouter.post('/login', async (c) => {
 
   const lockout = checkLockout(user.failed_login_attempts, user.locked_until)
   if (lockout.locked) {
-    return c.json(
-      { error: 'account_locked', retry_after_seconds: lockout.retryAfterSeconds },
-      423
-    )
+    return c.json({ error: 'account_locked', retry_after_seconds: lockout.retryAfterSeconds }, 423)
   }
 
   const valid = await verifyPassword(password, user.password_hash)
@@ -120,5 +123,9 @@ function page(title: string, body: string): string {
 }
 
 function escHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }

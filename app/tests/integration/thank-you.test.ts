@@ -37,10 +37,7 @@ async function seedEventAndRsvp(
 describe('GET /rsvp/thank-you', () => {
   it('returns 200 with guest name in body', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/thank-you?rid=${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/thank-you?rid=${token}`), env)
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('Alice Smith')
@@ -48,20 +45,14 @@ describe('GET /rsvp/thank-you', () => {
 
   it('shows event title in the page', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/thank-you?rid=${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/thank-you?rid=${token}`), env)
     const html = await res.text()
     expect(html).toContain('Garden Party')
   })
 
   it('shows party size (adults + children)', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/thank-you?rid=${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/thank-you?rid=${token}`), env)
     const html = await res.text()
     // 2 adults, 1 child
     expect(html).toMatch(/2.*adult|adult.*2/i)
@@ -69,10 +60,7 @@ describe('GET /rsvp/thank-you', () => {
 
   it('shows dietary entries', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/thank-you?rid=${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/thank-you?rid=${token}`), env)
     const html = await res.text()
     expect(html).toContain('vegetarian')
   })
@@ -81,20 +69,14 @@ describe('GET /rsvp/thank-you', () => {
     const { token } = await seedEventAndRsvp(env.DB, {
       wishlistUrl: 'https://registry.example.com/alice',
     })
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/thank-you?rid=${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/thank-you?rid=${token}`), env)
     const html = await res.text()
     expect(html).toContain('https://registry.example.com/alice')
   })
 
   it('does not show gift registry button when wishlist_url is null', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/thank-you?rid=${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/thank-you?rid=${token}`), env)
     const html = await res.text()
     // No registry link present
     expect(html).not.toContain('View Gift Registry')
@@ -102,10 +84,7 @@ describe('GET /rsvp/thank-you', () => {
 
   it('shows Download Calendar and Edit RSVP buttons', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/thank-you?rid=${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/thank-you?rid=${token}`), env)
     const html = await res.text()
     expect(html).toContain('Download Calendar')
     expect(html).toContain('Edit RSVP')

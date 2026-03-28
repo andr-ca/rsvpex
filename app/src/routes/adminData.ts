@@ -24,8 +24,9 @@ adminDataRouter.get('/rsvp/admin/events/:id/export.csv', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
 
-  const rows = await c.env.DB
-    .prepare('SELECT id,name,email,phone,status,adults,parents_count,siblings_count,children_count,party_total,dietary,notes,submitted_at,rsvp_token FROM rsvps WHERE event_id = ? ORDER BY submitted_at ASC')
+  const rows = await c.env.DB.prepare(
+    'SELECT id,name,email,phone,status,adults,parents_count,siblings_count,children_count,party_total,dietary,notes,submitted_at,rsvp_token FROM rsvps WHERE event_id = ? ORDER BY submitted_at ASC',
+  )
     .bind(event.id)
     .all<RsvpExportRow>()
 
@@ -51,32 +52,32 @@ adminDataRouter.get('/rsvp/admin/events/:id/export.json', async (c) => {
 
   if (includeTokens) {
     // Require fresh session (issued within last 15 minutes)
-    const sessionId = c.req.raw.headers.get('cookie')
+    const sessionId = c.req.raw.headers
+      .get('cookie')
       ?.split(';')
-      .map(s => s.trim())
-      .find(s => s.startsWith('session_id='))
+      .map((s) => s.trim())
+      .find((s) => s.startsWith('session_id='))
       ?.slice('session_id='.length)
 
     if (sessionId) {
-      const session = await c.env.DB
-        .prepare('SELECT created_at FROM sessions WHERE id = ? LIMIT 1')
+      const session = await c.env.DB.prepare('SELECT created_at FROM sessions WHERE id = ? LIMIT 1')
         .bind(sessionId)
         .first<{ created_at: string }>()
 
       if (!session || !isSessionFresh(session.created_at)) {
-        const next = encodeURIComponent(`/rsvp/admin/events/${event.id}/export.json?include_tokens=true`)
-        return c.json(
-          { error: 'reauth_required', redirect: `/rsvp/admin/login?next=${next}` },
-          403
+        const next = encodeURIComponent(
+          `/rsvp/admin/events/${event.id}/export.json?include_tokens=true`,
         )
+        return c.json({ error: 'reauth_required', redirect: `/rsvp/admin/login?next=${next}` }, 403)
       }
     } else {
       return c.json({ error: 'reauth_required', redirect: '/rsvp/admin/login' }, 403)
     }
   }
 
-  const rows = await c.env.DB
-    .prepare('SELECT id,name,email,phone,status,adults,parents_count,siblings_count,children_count,party_total,dietary,notes,submitted_at,rsvp_token FROM rsvps WHERE event_id = ? ORDER BY submitted_at ASC')
+  const rows = await c.env.DB.prepare(
+    'SELECT id,name,email,phone,status,adults,parents_count,siblings_count,children_count,party_total,dietary,notes,submitted_at,rsvp_token FROM rsvps WHERE event_id = ? ORDER BY submitted_at ASC',
+  )
     .bind(event.id)
     .all<RsvpExportRow>()
 
@@ -119,24 +120,39 @@ adminDataRouter.post('/rsvp/admin/events/:id/import', async (c) => {
 
   const parsed = parseImportCsv(csvText)
   if (!parsed.valid) {
-    return c.json({ error: parsed.headerError ?? 'Invalid CSV', imported: 0, failed: 0, errors: [] }, 400)
+    return c.json(
+      { error: parsed.headerError ?? 'Invalid CSV', imported: 0, failed: 0, errors: [] },
+      400,
+    )
   }
 
   const dataRows = parsed.rows.filter((r): r is { rowNum: number; data: ImportRow } => 'data' in r)
   const errorRows = parsed.rows.filter((r): r is { rowNum: number; error: string } => 'error' in r)
 
   if (dataRows.length > MAX_IMPORT_ROWS) {
-    return c.json({ error: `Too many rows. Maximum is ${MAX_IMPORT_ROWS} per import.`, imported: 0, failed: 0, errors: [] }, 400)
+    return c.json(
+      {
+        error: `Too many rows. Maximum is ${MAX_IMPORT_ROWS} per import.`,
+        imported: 0,
+        failed: 0,
+        errors: [],
+      },
+      400,
+    )
   }
 
   let imported = 0
-  const errors: Array<{ row: number; reason: string }> = errorRows.map(e => ({ row: e.rowNum, reason: e.error }))
+  const errors: Array<{ row: number; reason: string }> = errorRows.map((e) => ({
+    row: e.rowNum,
+    reason: e.error,
+  }))
 
   for (const { rowNum, data } of dataRows) {
     // Duplicate email check
     if (data.email) {
-      const existing = await c.env.DB
-        .prepare('SELECT id FROM rsvps WHERE event_id = ? AND lower(email) = lower(?) LIMIT 1')
+      const existing = await c.env.DB.prepare(
+        'SELECT id FROM rsvps WHERE event_id = ? AND lower(email) = lower(?) LIMIT 1',
+      )
         .bind(event.id, data.email)
         .first<{ id: string }>()
       if (existing) {
@@ -150,23 +166,36 @@ adminDataRouter.post('/rsvp/admin/events/:id/import', async (c) => {
     const now = new Date().toISOString()
 
     try {
-      await c.env.DB.prepare(`
+      await c.env.DB.prepare(
+        `
         INSERT INTO rsvps (id, event_id, name, email, phone, status, adults, parents_count, siblings_count, children_count, dietary, notes, answers, rsvp_token, source, submitted_at, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, '{}', ?, 'import', ?, ?, ?)
-      `).bind(
-        id, event.id, data.name,
-        data.email ?? null, data.phone ?? null,
-        data.status ?? 'attending',
-        data.adults ?? 1,
-        data.parents_count ?? 0,
-        data.siblings_count ?? 0,
-        data.children_count ?? 0,
-        data.notes ?? null,
-        token, now, now, now
-      ).run()
+      `,
+      )
+        .bind(
+          id,
+          event.id,
+          data.name,
+          data.email ?? null,
+          data.phone ?? null,
+          data.status ?? 'attending',
+          data.adults ?? 1,
+          data.parents_count ?? 0,
+          data.siblings_count ?? 0,
+          data.children_count ?? 0,
+          data.notes ?? null,
+          token,
+          now,
+          now,
+          now,
+        )
+        .run()
       imported++
     } catch (err) {
-      errors.push({ row: rowNum, reason: `DB error: ${err instanceof Error ? err.message : 'unknown'}` })
+      errors.push({
+        row: rowNum,
+        reason: `DB error: ${err instanceof Error ? err.message : 'unknown'}`,
+      })
     }
   }
 

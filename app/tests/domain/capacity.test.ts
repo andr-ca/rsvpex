@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { checkAndInsertRsvp, type RsvpInsertData } from '../../src/domain/capacity'
 
 // Helper: insert a seed event into D1
@@ -16,7 +16,9 @@ async function seedEvent(db: D1Database, overrides: Record<string, unknown> = {}
     ...overrides,
   }
   const cols = Object.keys(defaults).join(', ')
-  const placeholders = Object.keys(defaults).map(() => '?').join(', ')
+  const placeholders = Object.keys(defaults)
+    .map(() => '?')
+    .join(', ')
   await db
     .prepare(`INSERT INTO events (${cols}) VALUES (${placeholders})`)
     .bind(...Object.values(defaults))
@@ -104,8 +106,9 @@ describe('checkAndInsertRsvp', () => {
     await checkAndInsertRsvp(env.DB, eventId, makeRsvpData(eventId))
     // A "not_attending" response should still be accepted
     const result = await checkAndInsertRsvp(
-      env.DB, eventId,
-      makeRsvpData(eventId, { status: 'not_attending', email: 'other@example.com' })
+      env.DB,
+      eventId,
+      makeRsvpData(eventId, { status: 'not_attending', email: 'other@example.com' }),
     )
     expect(result.success).toBe(true)
     if (result.success) expect(result.status).toBe('not_attending')
@@ -113,17 +116,17 @@ describe('checkAndInsertRsvp', () => {
 
   it('throws when event not found', async () => {
     await expect(
-      checkAndInsertRsvp(env.DB, crypto.randomUUID(), makeRsvpData('nonexistent'))
+      checkAndInsertRsvp(env.DB, crypto.randomUUID(), makeRsvpData('nonexistent')),
     ).rejects.toThrow('Event not found')
   })
 
   it('concurrency: exactly 1 attending out of 5 parallel POSTs (cap=1, no waitlist)', async () => {
     const eventId = await seedEvent(env.DB, { max_guests_total: 1, enable_waitlist: 0 })
     const results = await Promise.all(
-      Array.from({ length: 5 }, () => checkAndInsertRsvp(env.DB, eventId, makeRsvpData(eventId)))
+      Array.from({ length: 5 }, () => checkAndInsertRsvp(env.DB, eventId, makeRsvpData(eventId))),
     )
-    const attending = results.filter(r => r.success && r.status === 'attending')
-    const full = results.filter(r => !r.success && r.status === 'full')
+    const attending = results.filter((r) => r.success && r.status === 'attending')
+    const full = results.filter((r) => !r.success && r.status === 'full')
     expect(attending).toHaveLength(1)
     expect(full).toHaveLength(4)
   })
@@ -131,10 +134,10 @@ describe('checkAndInsertRsvp', () => {
   it('concurrency: exactly 1 attending + rest waitlisted (cap=1, waitlist enabled)', async () => {
     const eventId = await seedEvent(env.DB, { max_guests_total: 1, enable_waitlist: 1 })
     const results = await Promise.all(
-      Array.from({ length: 5 }, () => checkAndInsertRsvp(env.DB, eventId, makeRsvpData(eventId)))
+      Array.from({ length: 5 }, () => checkAndInsertRsvp(env.DB, eventId, makeRsvpData(eventId))),
     )
-    const attending = results.filter(r => r.success && r.status === 'attending')
-    const waitlist = results.filter(r => r.success && r.status === 'waitlist')
+    const attending = results.filter((r) => r.success && r.status === 'attending')
+    const waitlist = results.filter((r) => r.success && r.status === 'waitlist')
     expect(attending).toHaveLength(1)
     expect(waitlist).toHaveLength(4)
   })

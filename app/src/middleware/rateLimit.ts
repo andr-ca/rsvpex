@@ -35,11 +35,9 @@ export function rsvpRateLimit(): MiddlewareHandler<{ Bindings: Env }> {
     const count = raw ? parseInt(raw, 10) : 0
 
     if (count >= LIMIT) {
-      return c.json(
-        { error: 'rate_limit_exceeded', retryAfter: WINDOW_TTL },
-        429,
-        { 'Retry-After': String(WINDOW_TTL) },
-      )
+      return c.json({ error: 'rate_limit_exceeded', retryAfter: WINDOW_TTL }, 429, {
+        'Retry-After': String(WINDOW_TTL),
+      })
     }
 
     // Increment — if first request in window, set TTL; otherwise preserve remaining TTL

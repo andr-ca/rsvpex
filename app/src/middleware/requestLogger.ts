@@ -33,10 +33,7 @@ function statusToLevel(status: number): number {
 
 /** Redact known PII query parameters. */
 export function stripPii(path: string): string {
-  return path.replace(
-    /([?&])(email|phone|dietary)=[^&]*/gi,
-    '$1$2=[REDACTED]',
-  )
+  return path.replace(/([?&])(email|phone|dietary)=[^&]*/gi, '$1$2=[REDACTED]')
 }
 
 /** Build a structured log object (pure, testable). */

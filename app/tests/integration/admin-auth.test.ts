@@ -8,26 +8,34 @@ import { describe, it, expect } from 'vitest'
 import app from '../../src/app'
 import { hashPassword } from '../../src/domain/adminAuth'
 
-async function seedAdmin(db: D1Database, overrides?: Partial<{
-  email: string
-  password: string
-  failed_login_attempts: number
-  locked_until: string | null
-  is_active: number
-}>): Promise<{ id: string; email: string; password: string }> {
+async function seedAdmin(
+  db: D1Database,
+  overrides?: Partial<{
+    email: string
+    password: string
+    failed_login_attempts: number
+    locked_until: string | null
+    is_active: number
+  }>,
+): Promise<{ id: string; email: string; password: string }> {
   const id = crypto.randomUUID()
   const email = overrides?.email ?? `admin${id.slice(0, 6)}@test.com`
   const password = overrides?.password ?? 'correct-horse-battery-staple'
   const hash = await hashPassword(password)
-  await db.prepare(
-    `INSERT INTO admin_users (id, email, password_hash, failed_login_attempts, locked_until, is_active)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).bind(
-    id, email, hash,
-    overrides?.failed_login_attempts ?? 0,
-    overrides?.locked_until ?? null,
-    overrides?.is_active ?? 1,
-  ).run()
+  await db
+    .prepare(
+      `INSERT INTO admin_users (id, email, password_hash, failed_login_attempts, locked_until, is_active)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      id,
+      email,
+      hash,
+      overrides?.failed_login_attempts ?? 0,
+      overrides?.locked_until ?? null,
+      overrides?.is_active ?? 1,
+    )
+    .run()
   return { id, email, password }
 }
 
@@ -47,11 +55,14 @@ describe('POST /rsvp/admin/setup', () => {
       password: 'correct-horse-battery-staple',
       display_name: 'First Admin',
     })
-    const res = await app.fetch(new Request('http://localhost/rsvp/admin/setup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    }), env)
+    const res = await app.fetch(
+      new Request('http://localhost/rsvp/admin/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      env,
+    )
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toContain('/login')
   })
@@ -62,11 +73,14 @@ describe('POST /rsvp/admin/setup', () => {
       email: 'second@example.com',
       password: 'correct-horse-battery-staple',
     })
-    const res = await app.fetch(new Request('http://localhost/rsvp/admin/setup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    }), env)
+    const res = await app.fetch(
+      new Request('http://localhost/rsvp/admin/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      env,
+    )
     expect(res.status).toBe(409)
   })
 })
@@ -75,11 +89,14 @@ describe('POST /rsvp/admin/login', () => {
   it('sets session cookie and redirects on valid credentials', async () => {
     const { email, password } = await seedAdmin(env.DB)
     const body = new URLSearchParams({ email, password })
-    const res = await app.fetch(new Request('http://localhost/rsvp/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    }), env)
+    const res = await app.fetch(
+      new Request('http://localhost/rsvp/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      env,
+    )
     expect(res.status).toBe(303)
     const setCookieHeader = res.headers.get('set-cookie')
     expect(setCookieHeader).toContain('session_id=')
@@ -90,11 +107,14 @@ describe('POST /rsvp/admin/login', () => {
   it('redirects to login?error=invalid on wrong password', async () => {
     const { email } = await seedAdmin(env.DB)
     const body = new URLSearchParams({ email, password: 'wrong-password' })
-    const res = await app.fetch(new Request('http://localhost/rsvp/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    }), env)
+    const res = await app.fetch(
+      new Request('http://localhost/rsvp/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      env,
+    )
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toContain('error=invalid')
   })
@@ -106,13 +126,16 @@ describe('POST /rsvp/admin/login', () => {
       locked_until: future,
     })
     const body = new URLSearchParams({ email, password })
-    const res = await app.fetch(new Request('http://localhost/rsvp/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    }), env)
+    const res = await app.fetch(
+      new Request('http://localhost/rsvp/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      env,
+    )
     expect(res.status).toBe(423)
-    const json = await res.json() as { error: string; retry_after_seconds: number }
+    const json = (await res.json()) as { error: string; retry_after_seconds: number }
     expect(json.error).toBe('account_locked')
     expect(json.retry_after_seconds).toBeGreaterThan(0)
   })
@@ -120,20 +143,26 @@ describe('POST /rsvp/admin/login', () => {
   it('locks account after 5 consecutive failed attempts', async () => {
     const { email } = await seedAdmin(env.DB)
     for (let i = 0; i < 5; i++) {
-      await app.fetch(new Request('http://localhost/rsvp/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ email, password: 'wrong' }).toString(),
-      }), env)
+      await app.fetch(
+        new Request('http://localhost/rsvp/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ email, password: 'wrong' }).toString(),
+        }),
+        env,
+      )
     }
     const body = new URLSearchParams({ email, password: 'wrong' })
-    const res = await app.fetch(new Request('http://localhost/rsvp/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    }), env)
+    const res = await app.fetch(
+      new Request('http://localhost/rsvp/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      env,
+    )
     expect(res.status).toBe(423)
-  // argon2id takes ~1.5s per call in Miniflare; 5 failed = ~7.5s
+    // argon2id takes ~1.5s per call in Miniflare; 5 failed = ~7.5s
   }, 30000)
 })
 
@@ -142,18 +171,24 @@ describe('POST /rsvp/admin/logout', () => {
     const { email, password } = await seedAdmin(env.DB)
     // Login first
     const loginBody = new URLSearchParams({ email, password })
-    const loginRes = await app.fetch(new Request('http://localhost/rsvp/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: loginBody.toString(),
-    }), env)
+    const loginRes = await app.fetch(
+      new Request('http://localhost/rsvp/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: loginBody.toString(),
+      }),
+      env,
+    )
     const cookie = loginRes.headers.get('set-cookie') ?? ''
     const sessionCookie = cookie.split(';')[0]
 
-    const logoutRes = await app.fetch(new Request('http://localhost/rsvp/admin/logout', {
-      method: 'POST',
-      headers: { Cookie: sessionCookie },
-    }), env)
+    const logoutRes = await app.fetch(
+      new Request('http://localhost/rsvp/admin/logout', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+      }),
+      env,
+    )
     expect(logoutRes.status).toBe(303)
     const clearCookie = logoutRes.headers.get('set-cookie') ?? ''
     expect(clearCookie).toContain('Max-Age=0')
@@ -170,17 +205,20 @@ describe('requireAdmin middleware', () => {
   it('allows access with valid session', async () => {
     const { email, password } = await seedAdmin(env.DB)
     const loginBody = new URLSearchParams({ email, password })
-    const loginRes = await app.fetch(new Request('http://localhost/rsvp/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: loginBody.toString(),
-    }), env)
+    const loginRes = await app.fetch(
+      new Request('http://localhost/rsvp/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: loginBody.toString(),
+      }),
+      env,
+    )
     const cookie = loginRes.headers.get('set-cookie') ?? ''
     const sessionCookie = cookie.split(';')[0]
 
     const dashboardRes = await app.fetch(
       new Request('http://localhost/rsvp/admin/', { headers: { Cookie: sessionCookie } }),
-      env
+      env,
     )
     expect(dashboardRes.status).toBe(200)
   })
@@ -189,11 +227,14 @@ describe('requireAdmin middleware', () => {
 describe('Password reset flow', () => {
   it('POST /rsvp/admin/password-reset always shows success page', async () => {
     const body = new URLSearchParams({ email: 'nonexistent@example.com' })
-    const res = await app.fetch(new Request('http://localhost/rsvp/admin/password-reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    }), env)
+    const res = await app.fetch(
+      new Request('http://localhost/rsvp/admin/password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      env,
+    )
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('Check Your Email')
@@ -206,19 +247,26 @@ describe('Password reset flow', () => {
     const tokenHash = await (async () => {
       const enc = new TextEncoder()
       const buf = await crypto.subtle.digest('SHA-256', enc.encode(rawToken))
-      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+      return Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
     })()
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
     await env.DB.prepare(
-      'INSERT INTO password_reset_tokens (id, admin_user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)'
-    ).bind(crypto.randomUUID(), id, tokenHash, expiresAt).run()
+      'INSERT INTO password_reset_tokens (id, admin_user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)',
+    )
+      .bind(crypto.randomUUID(), id, tokenHash, expiresAt)
+      .run()
 
     const body = new URLSearchParams({ token: rawToken, password: 'new-secure-password-123' })
-    const res = await app.fetch(new Request('http://localhost/rsvp/admin/password-reset/confirm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    }), env)
+    const res = await app.fetch(
+      new Request('http://localhost/rsvp/admin/password-reset/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      }),
+      env,
+    )
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toContain('reset=success')
   })
@@ -229,20 +277,25 @@ describe('Password reset flow', () => {
     const tokenHash = await (async () => {
       const enc = new TextEncoder()
       const buf = await crypto.subtle.digest('SHA-256', enc.encode(rawToken))
-      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+      return Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
     })()
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
     const tokenId = crypto.randomUUID()
     await env.DB.prepare(
-      'INSERT INTO password_reset_tokens (id, admin_user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)'
-    ).bind(tokenId, id, tokenHash, expiresAt).run()
+      'INSERT INTO password_reset_tokens (id, admin_user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)',
+    )
+      .bind(tokenId, id, tokenHash, expiresAt)
+      .run()
 
     const body = new URLSearchParams({ token: rawToken, password: 'new-secure-password-123' })
-    const req = () => new Request('http://localhost/rsvp/admin/password-reset/confirm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    })
+    const req = () =>
+      new Request('http://localhost/rsvp/admin/password-reset/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      })
 
     const first = await app.fetch(req(), env)
     expect(first.status).toBe(303)

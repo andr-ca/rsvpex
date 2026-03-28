@@ -33,59 +33,41 @@ async function seedEventAndRsvp(db: D1Database): Promise<{ token: string }> {
 describe('GET /rsvp/ics/:rsvpToken', () => {
   it('returns 200 with text/calendar content type', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/ics/${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/ics/${token}`), env)
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain('text/calendar')
   })
 
   it('has Content-Disposition attachment header', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/ics/${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/ics/${token}`), env)
     expect(res.headers.get('content-disposition')).toContain('attachment')
     expect(res.headers.get('content-disposition')).toContain('.ics')
   })
 
   it('body begins with BEGIN:VCALENDAR', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/ics/${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/ics/${token}`), env)
     const text = await res.text()
     expect(text).toMatch(/^BEGIN:VCALENDAR/)
   })
 
   it('body includes VTIMEZONE', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/ics/${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/ics/${token}`), env)
     const text = await res.text()
     expect(text).toContain('BEGIN:VTIMEZONE')
   })
 
   it('body includes event title as SUMMARY', async () => {
     const { token } = await seedEventAndRsvp(env.DB)
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/ics/${token}`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/ics/${token}`), env)
     const text = await res.text()
     expect(text).toContain('SUMMARY:Garden Party')
   })
 
   it('returns 404 for unknown token', async () => {
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/ics/nonexistent-token`),
-      env,
-    )
+    const res = await app.fetch(new Request(`http://localhost/rsvp/ics/nonexistent-token`), env)
     expect(res.status).toBe(404)
   })
 })

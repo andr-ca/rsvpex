@@ -10,14 +10,22 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
-  createEvent, getEvent, listEvents, updateEvent,
-  publishEvent, archiveEvent, getEventStats,
+  createEvent,
+  getEvent,
+  listEvents,
+  updateEvent,
+  publishEvent,
+  archiveEvent,
+  getEventStats,
 } from '../domain/adminEvents'
 import { requireAdmin } from '../middleware/requireAdmin'
 import { writeAuditLog } from '../domain/audit'
 
 /** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
-function fireAuditLog(c: { executionCtx?: { waitUntil: (p: Promise<unknown>) => void } }, p: Promise<void>): void {
+function fireAuditLog(
+  c: { executionCtx?: { waitUntil: (p: Promise<unknown>) => void } },
+  p: Promise<void>,
+): void {
   try {
     c.executionCtx?.waitUntil(p.catch(() => {}))
   } catch {
@@ -61,7 +69,10 @@ const eventSchema = z.object({
 // GET /rsvp/admin/events — list all events
 adminEventsRouter.get('/rsvp/admin/events', async (c) => {
   const events = await listEvents(c.env.DB)
-  return c.html(adminPage('Events — RSVPex Admin', `
+  return c.html(
+    adminPage(
+      'Events — RSVPex Admin',
+      `
     <div class="page-header">
       <h1>Events</h1>
       <a href="/rsvp/admin/events/new" class="btn">+ New Event</a>
@@ -72,7 +83,9 @@ adminEventsRouter.get('/rsvp/admin/events', async (c) => {
         <th>Title</th><th>Slug</th><th>Status</th><th>Starts</th><th>Visibility</th><th>Actions</th>
       </tr></thead>
       <tbody>
-        ${events.map(e => `
+        ${events
+          .map(
+            (e) => `
           <tr>
             <td><a href="/rsvp/admin/events/${e.id}">${escHtml(e.title)}</a></td>
             <td><code>${escHtml(e.slug)}</code></td>
@@ -84,18 +97,27 @@ adminEventsRouter.get('/rsvp/admin/events', async (c) => {
               <a href="/rsvp/admin/events/${e.id}/rsvps">RSVPs</a>
             </td>
           </tr>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </tbody>
     </table>
-  `))
+  `,
+    ),
+  )
 })
 
 // GET /rsvp/admin/events/new — new event form
 adminEventsRouter.get('/rsvp/admin/events/new', (c) => {
-  return c.html(adminPage('New Event — RSVPex Admin', `
+  return c.html(
+    adminPage(
+      'New Event — RSVPex Admin',
+      `
     <h1>New Event</h1>
     ${eventForm(null)}
-  `))
+  `,
+    ),
+  )
 })
 
 // POST /rsvp/admin/events — create event
@@ -104,11 +126,17 @@ adminEventsRouter.post('/rsvp/admin/events', async (c) => {
   const parsed = eventSchema.safeParse(body)
   if (!parsed.success) {
     const errors = parsed.error.flatten().fieldErrors
-    return c.html(adminPage('New Event — RSVPex Admin', `
+    return c.html(
+      adminPage(
+        'New Event — RSVPex Admin',
+        `
       <h1>New Event</h1>
       <div class="error">${Object.values(errors).flat().join(', ')}</div>
       ${eventForm(null, body as Record<string, string>)}
-    `), 422)
+    `,
+      ),
+      422,
+    )
   }
   const d = parsed.data
   const id = await createEvent(c.env.DB, {
@@ -139,13 +167,16 @@ adminEventsRouter.post('/rsvp/admin/events', async (c) => {
     reminderDaysBefore: d.reminder_days_before,
     questions: '[]',
   })
-  fireAuditLog(c, writeAuditLog(c.env.DB, {
-    actorId: c.get('adminUserId'),
-    entityType: 'event',
-    entityId: id,
-    action: 'create',
-    diff: { title: d.title },
-  }))
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'event',
+      entityId: id,
+      action: 'create',
+      diff: { title: d.title },
+    }),
+  )
   return c.redirect(`/rsvp/admin/events/${id}`, 303)
 })
 
@@ -154,8 +185,12 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
   const stats = await getEventStats(c.env.DB, event.id)
-  const capacityStr = stats.capacity != null ? `${stats.attending}/${stats.capacity}` : `${stats.attending} attending`
-  return c.html(adminPage(`${escHtml(event.title)} — RSVPex Admin`, `
+  const capacityStr =
+    stats.capacity != null ? `${stats.attending}/${stats.capacity}` : `${stats.attending} attending`
+  return c.html(
+    adminPage(
+      `${escHtml(event.title)} — RSVPex Admin`,
+      `
     <div class="page-header">
       <h1>${escHtml(event.title)}</h1>
       <div class="actions">
@@ -177,30 +212,45 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
       <dt>Waitlist</dt><dd>${event.enable_waitlist ? 'Enabled' : 'Disabled'}</dd>
     </dl>
     <div class="action-row">
-      ${event.status === 'draft' ? `
+      ${
+        event.status === 'draft'
+          ? `
         <form method="POST" action="/rsvp/admin/events/${event.id}/publish" style="display:inline">
           <button type="submit" class="btn btn-primary">Publish Event</button>
         </form>
-      ` : ''}
-      ${event.status !== 'archived' ? `
+      `
+          : ''
+      }
+      ${
+        event.status !== 'archived'
+          ? `
         <form method="POST" action="/rsvp/admin/events/${event.id}/archive" style="display:inline">
           <button type="submit" onclick="return confirm('Archive this event?')">Archive</button>
         </form>
-      ` : ''}
+      `
+          : ''
+      }
     </div>
     ${chartSection(event.id, stats)}
-  `))
+  `,
+    ),
+  )
 })
 
 // GET /rsvp/admin/events/:id/edit — edit form
 adminEventsRouter.get('/rsvp/admin/events/:id/edit', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
-  return c.html(adminPage(`Edit ${escHtml(event.title)} — RSVPex Admin`, `
+  return c.html(
+    adminPage(
+      `Edit ${escHtml(event.title)} — RSVPex Admin`,
+      `
     <h1>Edit Event</h1>
     ${event.status === 'published' ? '<div class="warning">This event is published — changes will affect the live form immediately.</div>' : ''}
     ${eventForm(event)}
-  `))
+  `,
+    ),
+  )
 })
 
 // POST /rsvp/admin/events/:id/edit — save event edits
@@ -211,11 +261,17 @@ adminEventsRouter.post('/rsvp/admin/events/:id/edit', async (c) => {
   const parsed = eventSchema.safeParse(body)
   if (!parsed.success) {
     const errors = parsed.error.flatten().fieldErrors
-    return c.html(adminPage(`Edit ${escHtml(event.title)} — RSVPex Admin`, `
+    return c.html(
+      adminPage(
+        `Edit ${escHtml(event.title)} — RSVPex Admin`,
+        `
       <h1>Edit Event</h1>
       <div class="error">${Object.values(errors).flat().join(', ')}</div>
       ${eventForm(event, body as Record<string, string>)}
-    `), 422)
+    `,
+      ),
+      422,
+    )
   }
   const d = parsed.data
   await updateEvent(c.env.DB, event.id, {
@@ -244,13 +300,16 @@ adminEventsRouter.post('/rsvp/admin/events/:id/edit', async (c) => {
     notifyViaSms: d.notify_via_sms,
     reminderDaysBefore: d.reminder_days_before,
   })
-  fireAuditLog(c, writeAuditLog(c.env.DB, {
-    actorId: c.get('adminUserId'),
-    entityType: 'event',
-    entityId: event.id,
-    action: 'update',
-    diff: { title: d.title },
-  }))
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'event',
+      entityId: event.id,
+      action: 'update',
+      diff: { title: d.title },
+    }),
+  )
   return c.redirect(`/rsvp/admin/events/${event.id}?saved=1`, 303)
 })
 
@@ -259,13 +318,16 @@ adminEventsRouter.post('/rsvp/admin/events/:id/publish', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
   await publishEvent(c.env.DB, event.id)
-  fireAuditLog(c, writeAuditLog(c.env.DB, {
-    actorId: c.get('adminUserId'),
-    entityType: 'event',
-    entityId: event.id,
-    action: 'publish',
-    diff: null,
-  }))
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'event',
+      entityId: event.id,
+      action: 'publish',
+      diff: null,
+    }),
+  )
   return c.redirect(`/rsvp/admin/events/${event.id}?published=1`, 303)
 })
 
@@ -274,13 +336,16 @@ adminEventsRouter.post('/rsvp/admin/events/:id/archive', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
   await archiveEvent(c.env.DB, event.id)
-  fireAuditLog(c, writeAuditLog(c.env.DB, {
-    actorId: c.get('adminUserId'),
-    entityType: 'event',
-    entityId: event.id,
-    action: 'archive',
-    diff: null,
-  }))
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'event',
+      entityId: event.id,
+      action: 'archive',
+      diff: null,
+    }),
+  )
   return c.redirect(`/rsvp/admin/events`, 303)
 })
 
@@ -289,7 +354,11 @@ export default adminEventsRouter
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
 function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 function adminPage(title: string, content: string): string {
@@ -363,18 +432,28 @@ function adminPage(title: string, content: string): string {
 </html>`
 }
 
-function eventForm(event: Record<string, unknown> | null, override?: Record<string, string>): string {
+function eventForm(
+  event: Record<string, unknown> | null,
+  override?: Record<string, string>,
+): string {
   const v = (field: string, fallback = '') => {
     if (override?.[field] !== undefined) return escHtml(String(override[field]))
-    if (event?.[field as keyof typeof event] !== undefined) return escHtml(String(event[field as keyof typeof event]))
+    if (event?.[field as keyof typeof event] !== undefined)
+      return escHtml(String(event[field as keyof typeof event]))
     return fallback
   }
   const checked = (field: string) => {
     if (override?.[field] !== undefined) return override[field] ? 'checked' : ''
     if (event) return (event as Record<string, unknown>)[field] ? 'checked' : ''
-    return field === 'allow_children' || field === 'allow_status_choice' || field === 'notify_via_email' ? 'checked' : ''
+    return field === 'allow_children' ||
+      field === 'allow_status_choice' ||
+      field === 'notify_via_email'
+      ? 'checked'
+      : ''
   }
-  const action = event ? `/rsvp/admin/events/${(event as { id: string }).id}/edit` : '/rsvp/admin/events'
+  const action = event
+    ? `/rsvp/admin/events/${(event as { id: string }).id}/edit`
+    : '/rsvp/admin/events'
 
   return `<form method="POST" action="${action}">
     <div class="form-row">
@@ -450,7 +529,16 @@ function eventForm(event: Record<string, unknown> | null, override?: Record<stri
   </form>`
 }
 
-function chartSection(eventId: string, stats: { attending: number; waitlist: number; not_attending: number; maybe: number; capacity: number | null }): string {
+function chartSection(
+  eventId: string,
+  stats: {
+    attending: number
+    waitlist: number
+    not_attending: number
+    maybe: number
+    capacity: number | null
+  },
+): string {
   const data = JSON.stringify(stats)
   return `
     <div class="chart-grid" aria-label="Event statistics charts">

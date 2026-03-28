@@ -34,8 +34,13 @@ async function seedEvent(
     ...overrides,
   }
   const cols = Object.keys(defaults).join(', ')
-  const placeholders = Object.keys(defaults).map(() => '?').join(', ')
-  await db.prepare(`INSERT INTO events (${cols}) VALUES (${placeholders})`).bind(...Object.values(defaults)).run()
+  const placeholders = Object.keys(defaults)
+    .map(() => '?')
+    .join(', ')
+  await db
+    .prepare(`INSERT INTO events (${cols}) VALUES (${placeholders})`)
+    .bind(...Object.values(defaults))
+    .run()
   return { id, slug }
 }
 
@@ -74,11 +79,12 @@ async function countByStatus(db: D1Database, eventId: string): Promise<Record<st
 
 describe('Capacity concurrency — 20 parallel POSTs', () => {
   it('capacity=1, no waitlist: exactly 1 attending, 19 rejected (capacity full)', async () => {
-    const { id: eventId, slug } = await seedEvent(env.DB, { max_guests_total: 1, enable_waitlist: 0 })
+    const { id: eventId, slug } = await seedEvent(env.DB, {
+      max_guests_total: 1,
+      enable_waitlist: 0,
+    })
 
-    const responses = await Promise.all(
-      Array.from({ length: 20 }, (_, i) => postRsvp(slug, i)),
-    )
+    const responses = await Promise.all(Array.from({ length: 20 }, (_, i) => postRsvp(slug, i)))
 
     const statuses = responses.map((r) => r.status)
     const redirects = statuses.filter((s) => s === 303)
@@ -95,11 +101,12 @@ describe('Capacity concurrency — 20 parallel POSTs', () => {
   })
 
   it('capacity=1, waitlist enabled: exactly 1 attending + 19 waitlisted', async () => {
-    const { id: eventId, slug } = await seedEvent(env.DB, { max_guests_total: 1, enable_waitlist: 1 })
+    const { id: eventId, slug } = await seedEvent(env.DB, {
+      max_guests_total: 1,
+      enable_waitlist: 1,
+    })
 
-    const responses = await Promise.all(
-      Array.from({ length: 20 }, (_, i) => postRsvp(slug, i)),
-    )
+    const responses = await Promise.all(Array.from({ length: 20 }, (_, i) => postRsvp(slug, i)))
 
     const successStatuses = responses.map((r) => r.status).filter((s) => s === 303)
     // All 20 should result in a redirect (attending or waitlist both redirect)

@@ -30,9 +30,7 @@ export function buildReminderMessages(
   eventId: string,
   rsvps: ReminderRsvpRow[],
 ): ReminderMessage[] {
-  return rsvps
-    .filter((r) => r.email)
-    .map((r) => ({ type: 'reminder', rsvpId: r.id, eventId }))
+  return rsvps.filter((r) => r.email).map((r) => ({ type: 'reminder', rsvpId: r.id, eventId }))
 }
 
 /**
@@ -87,9 +85,7 @@ export async function queryAttendingRsvpsForEvent(
  */
 export async function purgeOldAuditLogs(db: D1Database): Promise<number> {
   const result = await db
-    .prepare(
-      `DELETE FROM audit_logs WHERE created_at < datetime('now', '-365 days')`,
-    )
+    .prepare(`DELETE FROM audit_logs WHERE created_at < datetime('now', '-365 days')`)
     .run()
   return result.meta?.changes ?? 0
 }

@@ -3,11 +3,7 @@
  * @req SEC-04 — audit log with PII-redacted diffs
  */
 import { describe, it, expect } from 'vitest'
-import {
-  redactPii,
-  buildDiff,
-  writeAuditLog,
-} from '../../src/domain/audit'
+import { redactPii, buildDiff, writeAuditLog } from '../../src/domain/audit'
 
 describe('redactPii', () => {
   it('replaces email with first-8-char SHA-256 hex prefix', async () => {

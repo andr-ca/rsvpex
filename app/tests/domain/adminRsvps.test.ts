@@ -5,7 +5,7 @@
  * @req GAP-04 — Admin edit capacity guard
  */
 import { env } from 'cloudflare:test'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { createEvent } from '../../src/domain/adminEvents'
 import {
   listRsvps,
@@ -34,18 +34,28 @@ const baseEvent = {
   questions: '[]',
 }
 
-async function seedRsvp(db: D1Database, eventId: string, overrides?: Partial<{
-  name: string; email: string; status: string; adults: number
-}>) {
+async function seedRsvp(
+  db: D1Database,
+  eventId: string,
+  overrides?: Partial<{
+    name: string
+    email: string
+    status: string
+    adults: number
+  }>,
+) {
   const id = crypto.randomUUID()
   const name = overrides?.name ?? `Guest-${id.slice(0, 6)}`
   const status = overrides?.status ?? 'attending'
   const adults = overrides?.adults ?? 1
   const email = overrides?.email ?? null
-  await db.prepare(
-    `INSERT INTO rsvps (id, event_id, name, email, adults, status, rsvp_token, dietary, answers, children_ages)
-     VALUES (?, ?, ?, ?, ?, ?, ?, '[]', '{}', '[]')`
-  ).bind(id, eventId, name, email, adults, status, crypto.randomUUID()).run()
+  await db
+    .prepare(
+      `INSERT INTO rsvps (id, event_id, name, email, adults, status, rsvp_token, dietary, answers, children_ages)
+     VALUES (?, ?, ?, ?, ?, ?, ?, '[]', '{}', '[]')`,
+    )
+    .bind(id, eventId, name, email, adults, status, crypto.randomUUID())
+    .run()
   return id
 }
 
@@ -64,7 +74,7 @@ describe('listRsvps', () => {
     await seedRsvp(env.DB, eventId, { status: 'attending' })
     await seedRsvp(env.DB, eventId, { status: 'waitlist' })
     const result = await listRsvps(env.DB, eventId, { status: 'waitlist', page: 1, perPage: 50 })
-    expect(result.rsvps.every(r => r.status === 'waitlist')).toBe(true)
+    expect(result.rsvps.every((r) => r.status === 'waitlist')).toBe(true)
   })
 
   it('filters by name search (case-insensitive LIKE)', async () => {

@@ -24,7 +24,9 @@ describe('withSpan()', () => {
   it('logs error on thrown exception and re-throws', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     await expect(
-      withSpan('fail-op', async () => { throw new Error('boom') })
+      withSpan('fail-op', async () => {
+        throw new Error('boom')
+      }),
     ).rejects.toThrow('boom')
 
     const logged = JSON.parse(logSpy.mock.calls[0][0])

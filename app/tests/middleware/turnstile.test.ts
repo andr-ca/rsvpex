@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Hono } from 'hono'
 import { turnstileVerify } from '../../src/middleware/turnstile'
 
-function buildApp(secretKey = 'real-secret') {
+function buildApp(_secretKey = 'real-secret') {
   const app = new Hono<{ Bindings: typeof env }>()
   app.post('/rsvp/test', turnstileVerify(), (c) => c.json({ ok: true }))
   return app
@@ -22,7 +22,10 @@ function makeRequest(
     'http://example.com/rsvp/test',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'CF-Connecting-IP': '1.2.3.4' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'CF-Connecting-IP': '1.2.3.4',
+      },
       body: body.toString(),
     },
     { ...env, ...extraEnv },
@@ -41,9 +44,9 @@ describe('turnstileVerify middleware', () => {
   it('returns 400 captcha_missing when no token provided', async () => {
     const app = buildApp()
     // Patch global fetch to ensure it would succeed if called (but it should NOT be called)
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ success: true }), { status: 200 }),
-    )
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }))
     const res = await makeRequest(app, null, { TURNSTILE_SECRET_KEY: 'real-secret' })
     expect(res.status).toBe(400)
     const body = await res.json<{ error: string }>()

@@ -18,9 +18,7 @@ export type AuditEntry = {
  * Redact PII fields (email, phone) by replacing them with the first 8 hex
  * characters of their SHA-256 hash. Other fields are passed through unchanged.
  */
-export async function redactPii(
-  obj: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+export async function redactPii(obj: Record<string, unknown>): Promise<Record<string, unknown>> {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(obj)) {
     if ((key === 'email' || key === 'phone') && typeof value === 'string') {
@@ -59,10 +57,7 @@ export function buildDiff(
  *
  * @req SEC-04
  */
-export async function writeAuditLog(
-  db: D1Database,
-  entry: AuditEntry,
-): Promise<void> {
+export async function writeAuditLog(db: D1Database, entry: AuditEntry): Promise<void> {
   const id = crypto.randomUUID()
   await db
     .prepare(
