@@ -12,6 +12,8 @@
  * @req GAP-02 — return existing rsvp_token so guest can be offered an edit link
  */
 
+import { withSpan } from './tracing'
+
 export type ExactDuplicateResult =
   | { isDuplicate: true;  rsvpToken: string }
   | { isDuplicate: false }
@@ -27,6 +29,16 @@ export type HeuristicDuplicateResult =
  * partial unique index in the migration.
  */
 export async function isDuplicate(
+  db: D1Database,
+  eventId: string,
+  email: string | null,
+  phone: string | null,
+  traceId?: string,
+): Promise<ExactDuplicateResult> {
+  return withSpan('duplicates.isDuplicate', () => _isDuplicate(db, eventId, email, phone), traceId)
+}
+
+async function _isDuplicate(
   db: D1Database,
   eventId: string,
   email: string | null,
@@ -68,6 +80,22 @@ export async function isHeuristicDuplicate(
   email: string | null,
   phone: string | null,
   windowMs = 5 * 60 * 1000,
+  traceId?: string,
+): Promise<HeuristicDuplicateResult> {
+  return withSpan(
+    'duplicates.isHeuristicDuplicate',
+    () => _isHeuristicDuplicate(db, eventId, name, email, phone, windowMs),
+    traceId,
+  )
+}
+
+async function _isHeuristicDuplicate(
+  db: D1Database,
+  eventId: string,
+  name: string,
+  email: string | null,
+  phone: string | null,
+  windowMs: number,
 ): Promise<HeuristicDuplicateResult> {
   const normalisedName = name.trim().toLowerCase().replace(/\s+/g, ' ')
   const windowStart = new Date(Date.now() - windowMs).toISOString()

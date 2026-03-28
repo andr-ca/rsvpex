@@ -18,9 +18,31 @@ async function seedAdminSession(db: D1Database): Promise<string> {
   return `session_id=${sessionId}`
 }
 
+/** Fetch a CSRF token by doing a GET to an admin page and extracting the csrf_token cookie. */
+async function getCsrfToken(sessionCookie: string): Promise<string> {
+  const res = await app.fetch(
+    new Request('http://localhost/rsvp/admin/', {
+      headers: { Cookie: sessionCookie },
+    }),
+    env,
+  )
+  const setCookieHeader = res.headers.get('Set-Cookie') ?? ''
+  const match = setCookieHeader.match(/csrf_token=([^;]+)/)
+  return match?.[1] ?? ''
+}
+
 async function makeAuthedRequest(url: string, options: RequestInit, db: D1Database) {
   const cookie = await seedAdminSession(db)
-  const headers = { ...(options.headers ?? {}), Cookie: cookie }
+  const method = (options.method ?? 'GET').toUpperCase()
+  const headers: Record<string, string> = { ...(options.headers as Record<string, string> ?? {}), Cookie: cookie }
+
+  // For mutating requests, include CSRF token
+  if (['POST', 'PATCH', 'DELETE', 'PUT'].includes(method)) {
+    const csrfToken = await getCsrfToken(cookie)
+    headers.Cookie = `${cookie}; csrf_token=${csrfToken}`
+    headers['X-CSRF-Token'] = csrfToken
+  }
+
   return app.fetch(new Request(url, { ...options, headers }), env)
 }
 
@@ -72,13 +94,18 @@ describe('GET /rsvp/admin/events/:id — event detail', () => {
   it('returns 200 with event info', async () => {
     // Create event first
     const cookie = await seedAdminSession(env.DB)
+    const csrfToken = await getCsrfToken(cookie)
     const createBody = new URLSearchParams({
       title: 'Detail Test Event', start_at: '2027-07-01T18:00',
       timezone: 'UTC', visibility: 'public', locale: 'en', max_party_size_per_rsvp: '10',
     })
     const createRes = await app.fetch(new Request('http://localhost/rsvp/admin/events', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Cookie: `${cookie}; csrf_token=${csrfToken}`,
+        'X-CSRF-Token': csrfToken,
+      },
       body: createBody.toString(),
     }), env)
     const location = createRes.headers.get('location')!

@@ -1,5 +1,8 @@
 import { Hono } from 'hono'
 import { methodOverride } from 'hono/method-override'
+import { requestLogger } from './middleware/requestLogger'
+import { securityHeaders } from './middleware/securityHeaders'
+import { csrfProtection } from './middleware/csrf'
 import healthRouter from './routes/health'
 import rsvpFormRouter from './routes/rsvpForm'
 import rsvpSubmitRouter from './routes/rsvpSubmit'
@@ -18,6 +21,11 @@ import adminDataRouter from './routes/adminData'
 import { requireAdmin } from './middleware/requireAdmin'
 
 const app = new Hono<{ Bindings: Env }>()
+
+// Phase 10: Global middleware — outermost first
+app.use('*', requestLogger())
+app.use('*', securityHeaders())
+app.use('*', csrfProtection())
 
 app.use('*', methodOverride({ app }))
 

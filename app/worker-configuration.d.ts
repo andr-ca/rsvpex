@@ -16,6 +16,7 @@ declare namespace Cloudflare {
 		TWILIO_ACCOUNT_SID?: string;
 		TWILIO_AUTH_TOKEN?: string;
 		TWILIO_FROM_NUMBER?: string;
+		DEPLOYMENT_DOMAIN?: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

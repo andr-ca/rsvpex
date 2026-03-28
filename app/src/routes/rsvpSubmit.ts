@@ -25,6 +25,7 @@ import { checkAndInsertRsvp } from '../domain/capacity'
 import { isDuplicate, isHeuristicDuplicate } from '../domain/duplicates'
 import { generateToken, generateIpHash } from '../domain/tokens'
 import { currentThreshold } from '../domain/notifications'
+import { withSpan } from '../domain/tracing'
 import { t, resolveLocale, type SupportedLocale } from '../i18n'
 import type { NotificationMessage } from '../handlers/queue'
 
@@ -72,7 +73,7 @@ type EventRow = {
   questions: string // JSON array
 }
 
-const rsvpSubmitRouter = new Hono<{ Bindings: Env }>()
+const rsvpSubmitRouter = new Hono<{ Bindings: Env; Variables: { reqId?: string } }>()
 
 rsvpSubmitRouter.post(
   '/:slug',
@@ -81,6 +82,7 @@ rsvpSubmitRouter.post(
   async (c) => {
     const slug = c.req.param('slug')
     const now = new Date().toISOString()
+    const reqId = c.get('reqId') as string | undefined
 
     // ── Load event ─────────────────────────────────────────────────────────
     const event = await c.env.DB.prepare(
@@ -241,7 +243,7 @@ rsvpSubmitRouter.post(
     }
 
     // ── Exact duplicate check ──────────────────────────────────────────────
-    const dupResult = await isDuplicate(c.env.DB, event.id, email, phone)
+    const dupResult = await isDuplicate(c.env.DB, event.id, email, phone, reqId)
     if (dupResult.isDuplicate) {
       return c.json(
         { error: 'already_rsvped', action: 'resend_edit_link', rsvpToken: dupResult.rsvpToken },
@@ -251,7 +253,7 @@ rsvpSubmitRouter.post(
 
     // ── Heuristic duplicate check (optional, per event) ───────────────────
     if (event.enable_heuristic_dup_check) {
-      const heuristic = await isHeuristicDuplicate(c.env.DB, event.id, body.name, email, phone)
+      const heuristic = await isHeuristicDuplicate(c.env.DB, event.id, body.name, email, phone, undefined, reqId)
       if (heuristic.isDuplicate) {
         return c.json(
           { error: 'already_rsvped', action: 'resend_edit_link', rsvpToken: heuristic.rsvpToken },
@@ -296,7 +298,7 @@ rsvpSubmitRouter.post(
       ipHash,
       userAgent,
       clientSubmittedAt: body.client_submitted_at ?? null,
-    })
+    }, reqId)
 
     // ── Capacity full ──────────────────────────────────────────────────────
     if (!result.success) {
@@ -336,9 +338,17 @@ rsvpSubmitRouter.post(
     }
 
     if (msgs.length > 0) {
-      c.executionCtx.waitUntil(
-        c.env.NOTIFICATIONS_QUEUE.sendBatch(msgs.map((body) => ({ body })))
+      const sendPromise = withSpan(
+        'queue.sendBatch',
+        () => c.env.NOTIFICATIONS_QUEUE.sendBatch(msgs.map((body) => ({ body }))),
+        reqId,
       )
+      try {
+        c.executionCtx?.waitUntil(sendPromise)
+      } catch {
+        // In integration tests, executionCtx may not exist — fire and forget
+        void sendPromise.catch(() => {})
+      }
     }
 
     // ── Redirect to thank-you page ────────────────────────────────────────

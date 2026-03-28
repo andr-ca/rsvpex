@@ -32,6 +32,19 @@ async function seedAdminSession(db: D1Database, fresh = true): Promise<{ cookie:
   return { cookie: `session_id=${sessionId}`, sessionId }
 }
 
+/** Fetch a CSRF token by doing a GET to an admin page and extracting the csrf_token cookie. */
+async function getCsrfToken(sessionCookie: string): Promise<string> {
+  const res = await app.fetch(
+    new Request('http://localhost/rsvp/admin/', {
+      headers: { Cookie: sessionCookie },
+    }),
+    env,
+  )
+  const setCookieHeader = res.headers.get('Set-Cookie') ?? ''
+  const match = setCookieHeader.match(/csrf_token=([^;]+)/)
+  return match?.[1] ?? ''
+}
+
 async function seedEvent(db: D1Database): Promise<string> {
   return createEvent(db, baseEvent)
 }
@@ -150,6 +163,7 @@ describe('POST /rsvp/admin/events/:id/import', () => {
   it('imports valid CSV rows and returns counts', async () => {
     const eventId = await seedEvent(env.DB)
     const { cookie } = await seedAdminSession(env.DB)
+    const csrfToken = await getCsrfToken(cookie)
 
     const csvContent = 'name,email,status,adults\nDave Brown,dave@example.com,attending,2\nEve Davis,eve@example.com,attending,1'
     const formData = new FormData()
@@ -158,7 +172,10 @@ describe('POST /rsvp/admin/events/:id/import', () => {
     const res = await app.fetch(
       new Request(`http://localhost/rsvp/admin/events/${eventId}/import`, {
         method: 'POST',
-        headers: { Cookie: cookie },
+        headers: {
+          Cookie: `${cookie}; csrf_token=${csrfToken}`,
+          'X-CSRF-Token': csrfToken,
+        },
         body: formData,
       }),
       env
@@ -174,6 +191,7 @@ describe('POST /rsvp/admin/events/:id/import', () => {
     const eventId = await seedEvent(env.DB)
     await seedRsvp(env.DB, eventId, 'Existing Guest', 'dupe@example.com')
     const { cookie } = await seedAdminSession(env.DB)
+    const csrfToken = await getCsrfToken(cookie)
 
     const csvContent = 'name,email,status\nDuplicate Person,dupe@example.com,attending'
     const formData = new FormData()
@@ -182,7 +200,10 @@ describe('POST /rsvp/admin/events/:id/import', () => {
     const res = await app.fetch(
       new Request(`http://localhost/rsvp/admin/events/${eventId}/import`, {
         method: 'POST',
-        headers: { Cookie: cookie },
+        headers: {
+          Cookie: `${cookie}; csrf_token=${csrfToken}`,
+          'X-CSRF-Token': csrfToken,
+        },
         body: formData,
       }),
       env
@@ -197,6 +218,7 @@ describe('POST /rsvp/admin/events/:id/import', () => {
   it('returns 400 when required "name" column is missing', async () => {
     const eventId = await seedEvent(env.DB)
     const { cookie } = await seedAdminSession(env.DB)
+    const csrfToken = await getCsrfToken(cookie)
 
     const csvContent = 'email,status\nfoo@example.com,attending'
     const formData = new FormData()
@@ -205,7 +227,10 @@ describe('POST /rsvp/admin/events/:id/import', () => {
     const res = await app.fetch(
       new Request(`http://localhost/rsvp/admin/events/${eventId}/import`, {
         method: 'POST',
-        headers: { Cookie: cookie },
+        headers: {
+          Cookie: `${cookie}; csrf_token=${csrfToken}`,
+          'X-CSRF-Token': csrfToken,
+        },
         body: formData,
       }),
       env

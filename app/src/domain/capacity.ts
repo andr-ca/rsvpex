@@ -11,6 +11,8 @@
  * @req CAP-03 — reject with status 'full' when enable_waitlist=false and event is full
  */
 
+import { withSpan } from './tracing'
+
 export type RsvpInsertData = {
   id: string
   eventId: string
@@ -46,6 +48,15 @@ export type CapacityResult =
  * When `max_guests_total` is NULL (no cap configured), the conditional INSERT always fires.
  */
 export async function checkAndInsertRsvp(
+  db: D1Database,
+  eventId: string,
+  data: RsvpInsertData,
+  traceId?: string,
+): Promise<CapacityResult> {
+  return withSpan('capacity.checkAndInsert', () => _checkAndInsertRsvp(db, eventId, data), traceId)
+}
+
+async function _checkAndInsertRsvp(
   db: D1Database,
   eventId: string,
   data: RsvpInsertData,

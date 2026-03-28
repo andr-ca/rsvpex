@@ -27,6 +27,19 @@ async function seedAdminSession(db: D1Database): Promise<string> {
   return `session_id=${sessionId}`
 }
 
+/** Fetch a CSRF token by doing a GET to an admin page and extracting the csrf_token cookie. */
+async function getCsrfToken(sessionCookie: string): Promise<string> {
+  const res = await app.fetch(
+    new Request('http://localhost/rsvp/admin/', {
+      headers: { Cookie: sessionCookie },
+    }),
+    env,
+  )
+  const setCookieHeader = res.headers.get('Set-Cookie') ?? ''
+  const match = setCookieHeader.match(/csrf_token=([^;]+)/)
+  return match?.[1] ?? ''
+}
+
 async function seedRsvp(db: D1Database, eventId: string, status = 'attending', adults = 1) {
   const id = crypto.randomUUID()
   await db.prepare(
@@ -74,9 +87,13 @@ describe('POST /rsvp/admin/events/:id/rsvps/:rsvpId/promote', () => {
     const eventId = await createEvent(env.DB, { ...baseEvent, maxGuestsTotal: 5 })
     const rsvpId = await seedRsvp(env.DB, eventId, 'waitlist', 1)
     const cookie = await seedAdminSession(env.DB)
+    const csrfToken = await getCsrfToken(cookie)
     const res = await app.fetch(new Request(`http://localhost/rsvp/admin/events/${eventId}/rsvps/${rsvpId}/promote`, {
       method: 'POST',
-      headers: { Cookie: cookie },
+      headers: {
+        Cookie: `${cookie}; csrf_token=${csrfToken}`,
+        'X-CSRF-Token': csrfToken,
+      },
     }), env)
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toContain('flash=promoted')
@@ -87,9 +104,13 @@ describe('POST /rsvp/admin/events/:id/rsvps/:rsvpId/promote', () => {
     await seedRsvp(env.DB, eventId, 'attending', 2)  // fills capacity
     const rsvpId = await seedRsvp(env.DB, eventId, 'waitlist', 1)
     const cookie = await seedAdminSession(env.DB)
+    const csrfToken = await getCsrfToken(cookie)
     const res = await app.fetch(new Request(`http://localhost/rsvp/admin/events/${eventId}/rsvps/${rsvpId}/promote`, {
       method: 'POST',
-      headers: { Cookie: cookie },
+      headers: {
+        Cookie: `${cookie}; csrf_token=${csrfToken}`,
+        'X-CSRF-Token': csrfToken,
+      },
     }), env)
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toContain('flash=no_capacity')
@@ -102,13 +123,18 @@ describe('POST /rsvp/admin/events/:id/rsvps/:rsvpId/edit — capacity guard', ()
     await seedRsvp(env.DB, eventId, 'attending', 2)  // 2 attending
     const rsvpId = await seedRsvp(env.DB, eventId, 'attending', 1)  // 1 attending = 3 total
     const cookie = await seedAdminSession(env.DB)
+    const csrfToken = await getCsrfToken(cookie)
     const editBody = new URLSearchParams({
       name: 'Test', adults: '3', parents_count: '0', siblings_count: '0',
       children_count: '0', status: 'attending',
     })
     const res = await app.fetch(new Request(`http://localhost/rsvp/admin/events/${eventId}/rsvps/${rsvpId}/edit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Cookie: `${cookie}; csrf_token=${csrfToken}`,
+        'X-CSRF-Token': csrfToken,
+      },
       body: editBody.toString(),
     }), env)
     expect(res.status).toBe(303)
