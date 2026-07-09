@@ -8,18 +8,13 @@
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["nodejs_compat"],
 
-  // ── REQUIRED BEFORE FIRST DEPLOY ─────────────────────────────────────────
-  // database_id and kv id below are PLACEHOLDER values. Provision real
-  // resources and replace them before running `wrangler deploy`:
-  //   wrangler d1 create rsvpex-db
-  //   wrangler kv namespace create RATE_LIMIT_KV
-  // See app/README.md for the full first-deploy runbook.
-
+  // Provisioned on the free tier, same Cloudflare account as the
+  // rsvpex.com zone and the static-site Pages deploy (2026-07-09).
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "rsvpex-db",
-      "database_id": "PLACEHOLDER",
+      "database_id": "d381987e-0099-4bd7-8208-55903aebab4c",
       "migrations_dir": "migrations"
     }
   ],
@@ -29,9 +24,16 @@
       // Used only by the RSVP-submission rate limiter (middleware/rateLimit.ts).
       // Admin sessions live in D1, not KV — see STATE.md Key Decisions.
       "binding": "RATE_LIMIT_KV",
-      "id": "PLACEHOLDER"
+      "id": "522d1f8cc19744e692a9391bfb144fd3"
     }
   ],
+
+  // Routes rsvpex.com/rsvp/* to this Worker; every other path on the zone
+  // (the marketing "Coming Soon" page) keeps being served by Cloudflare
+  // Pages. Requires the deploying API token to have Zone > Workers Routes >
+  // Edit on the rsvpex.com zone — if deploy-app.yml fails here, that's the
+  // permission to add to the CLOUDFLARE_API_TOKEN GitHub secret.
+  "routes": [{ "pattern": "rsvpex.com/rsvp/*", "zone_name": "rsvpex.com" }],
 
   "queues": {
     "producers": [
@@ -74,8 +76,8 @@
   // deploy can never disable CAPTCHA/rate-limiting just because a secret was
   // accidentally set to the test literal.
   "vars": {
-    "TURNSTILE_SITE_KEY": "PLACEHOLDER_SITE_KEY",
-    "DEPLOYMENT_DOMAIN": "https://rsvpex.example.com",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAADyl3LcpKCh2BO-G",
+    "DEPLOYMENT_DOMAIN": "https://rsvpex.com",
     "ENVIRONMENT": "production"
   }
 }

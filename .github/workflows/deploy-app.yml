@@ -65,6 +65,14 @@ jobs:
             echo "::error::wrangler.jsonc still has PLACEHOLDER database_id/kv id. Provision real D1/KV resources and update wrangler.jsonc before deploying (see app/README.md)." >&2
             exit 1
           fi
+          # A placeholder TURNSTILE_SITE_KEY doesn't fail as loudly as a bad
+          # resource ID — the deploy itself succeeds, but every public RSVP
+          # submission silently breaks (captcha_missing) since the widget
+          # never renders. Catch it here instead.
+          if grep -q '"TURNSTILE_SITE_KEY": "PLACEHOLDER_SITE_KEY"' wrangler.jsonc; then
+            echo "::error::wrangler.jsonc still has a PLACEHOLDER TURNSTILE_SITE_KEY. Create a Turnstile widget for this domain and set both TURNSTILE_SITE_KEY (wrangler.jsonc vars) and TURNSTILE_SECRET_KEY (wrangler secret put) before deploying." >&2
+            exit 1
+          fi
 
       - name: Apply D1 migrations
         env:
