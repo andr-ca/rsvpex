@@ -14,10 +14,21 @@ TWILIO_FROM_NUMBER=
 # ── CAPTCHA (Cloudflare Turnstile) ───────────────────────
 TURNSTILE_SECRET_KEY=
 
-# ── Session security ─────────────────────────────────────
-# Random 32-byte hex string; used to sign session tokens
-SESSION_SECRET=
-
 # ── Password hashing ─────────────────────────────────────
-# Random 32-byte hex string; pepper applied to all argon2id hashes
+# Random 32-byte hex string; pepper mixed into every argon2id hash so a
+# leaked admin_users table alone (without this secret) can't be cracked
+# offline. Falls back to a fixed in-code pepper if unset — set this for
+# real before deploying (see domain/adminAuth.ts).
 ARGON2_PEPPER=
+
+# ── First-run admin setup gate ────────────────────────────
+# Optional. If set, POST /rsvp/admin/setup requires this value in the
+# setup_secret field — closes the window where anyone who finds the
+# /setup URL before you do can create the first admin account.
+SETUP_SECRET=
+
+# ── IP hashing ─────────────────────────────────────────────
+# Random 32-byte hex string; HMAC key for hashing guest IPs before storing
+# (ip_hash column, rate limiter keys). Falls back to a fixed in-code pepper
+# if unset — set this for real before deploying (see domain/tokens.ts).
+IP_HASH_KEY=

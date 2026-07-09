@@ -17,6 +17,11 @@ export default defineConfig(async () => {
             TEST_MIGRATIONS: migrations,
             // Bypass Turnstile verification in tests
             TURNSTILE_SECRET_KEY: 'test-secret',
+            // wrangler.jsonc's `vars.ENVIRONMENT` is "production" (S-1 in
+            // recommendations.md gates the test-secret bypasses above on
+            // ENVIRONMENT !== 'production') — override it here so tests still
+            // get the bypass instead of hitting real Turnstile/rate limits.
+            ENVIRONMENT: 'test',
           },
         },
       }),

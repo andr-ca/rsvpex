@@ -6,17 +6,21 @@ declare namespace Cloudflare {
 		mainModule: typeof import("./src/index");
 	}
 	interface Env {
-		SESSION_KV: KVNamespace;
+		RATE_LIMIT_KV: KVNamespace;
 		DB: D1Database;
 		NOTIFICATIONS_QUEUE: Queue;
-		AUDIT_QUEUE: Queue;
 		TURNSTILE_SECRET_KEY: string;
+		TURNSTILE_SITE_KEY: string;
 		RESEND_API_KEY?: string;
 		ADMIN_FROM_EMAIL?: string;
 		TWILIO_ACCOUNT_SID?: string;
 		TWILIO_AUTH_TOKEN?: string;
 		TWILIO_FROM_NUMBER?: string;
 		DEPLOYMENT_DOMAIN?: string;
+		SETUP_SECRET?: string;
+		IP_HASH_KEY?: string;
+		ARGON2_PEPPER?: string;
+		ENVIRONMENT?: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

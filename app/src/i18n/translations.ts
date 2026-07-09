@@ -37,6 +37,7 @@ export const translations: Record<SupportedLocale, TranslationTable> = {
     'legend.attendance': 'Will you be attending?',
     'legend.dietary': 'Dietary Requirements',
     'legend.dietaryHint': 'Add up to 10 entries (one per line).',
+    'legend.additionalQuestions': 'A Few More Questions',
     'legend.notes': 'Anything Else?',
 
     // Status choices
@@ -123,6 +124,7 @@ export const translations: Record<SupportedLocale, TranslationTable> = {
     'legend.attendance': 'Serez-vous présent(e) ?',
     'legend.dietary': 'Exigences alimentaires',
     'legend.dietaryHint': "Ajoutez jusqu'à 10 entrées (une par ligne).",
+    'legend.additionalQuestions': 'Quelques questions supplémentaires',
     'legend.notes': 'Autre chose ?',
 
     'status.attending': 'Oui, je serai là',
@@ -206,6 +208,7 @@ export const translations: Record<SupportedLocale, TranslationTable> = {
     'legend.attendance': '¿Asistirás?',
     'legend.dietary': 'Requisitos dietéticos',
     'legend.dietaryHint': 'Añade hasta 10 entradas (una por línea).',
+    'legend.additionalQuestions': 'Unas preguntas más',
     'legend.notes': '¿Algo más?',
 
     'status.attending': 'Sí, estaré allí',

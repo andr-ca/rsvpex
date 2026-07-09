@@ -76,10 +76,12 @@ describe('turnstileVerify middleware', () => {
     expect(res.status).toBe(200)
   })
 
-  it('fails open (passes through) when Turnstile API is unreachable', async () => {
+  it('fails closed (503) when Turnstile API is unreachable (S-1 in recommendations.md)', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Network error'))
     const app = buildApp()
     const res = await makeRequest(app, 'valid-token', { TURNSTILE_SECRET_KEY: 'real-secret' })
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(503)
+    const body = await res.json<{ error: string }>()
+    expect(body.error).toBe('captcha_unavailable')
   })
 })

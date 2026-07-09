@@ -124,8 +124,14 @@ export type AdminEditResult =
 
 /**
  * Update an RSVP. If the status changes to/from 'attending' or party size increases,
- * performs a transactional capacity recheck using the same atomic pattern as the
- * public submit path.
+ * performs a transactional capacity recheck.
+ *
+ * The capacity check and the write happen in a SINGLE conditional UPDATE statement
+ * (C-6 in recommendations.md): the previous implementation read the current capacity,
+ * decided, and then issued a separate UPDATE — two concurrent edits could both pass
+ * the read and both write, overbooking the event exactly like the race this function's
+ * docstring claims to prevent. This mirrors the pattern in domain/capacity.ts and
+ * promoteFromWaitlist() below: the WHERE clause IS the check.
  *
  * @req GAP-04
  */
@@ -152,35 +158,6 @@ export async function updateRsvpWithCapacityGuard(
     (newStatus === 'attending' && oldStatus !== 'attending') ||
     (newStatus === 'attending' && oldStatus === 'attending' && newPartyTotal > oldPartyTotal)
 
-  if (needsCapacityCheck) {
-    const event = await db
-      .prepare('SELECT max_guests_total FROM events WHERE id = ? LIMIT 1')
-      .bind(existing.event_id)
-      .first<{ max_guests_total: number | null }>()
-
-    if (event?.max_guests_total != null) {
-      // Current attending total EXCLUDING this RSVP's old contribution
-      const otherAttending = await db
-        .prepare(
-          `SELECT COALESCE(SUM(party_total), 0) as total FROM rsvps
-           WHERE event_id = ? AND status = 'attending' AND id != ?`,
-        )
-        .bind(existing.event_id, rsvpId)
-        .first<{ total: number }>()
-
-      const currentOtherTotal = Number(otherAttending?.total ?? 0)
-      if (currentOtherTotal + newPartyTotal > event.max_guests_total) {
-        return {
-          success: false,
-          reason: 'capacity_exceeded',
-          current: currentOtherTotal + (oldStatus === 'attending' ? oldPartyTotal : 0),
-          capacity: event.max_guests_total,
-        }
-      }
-    }
-  }
-
-  // Perform the update
   const now = new Date().toISOString()
   const sets: string[] = ['updated_at = ?']
   const binds: unknown[] = [now]
@@ -234,11 +211,48 @@ export async function updateRsvpWithCapacityGuard(
     binds.push(input.status)
   }
 
+  let sql = `UPDATE rsvps SET ${sets.join(', ')} WHERE id = ?`
   binds.push(rsvpId)
-  await db
-    .prepare(`UPDATE rsvps SET ${sets.join(', ')} WHERE id = ?`)
+
+  if (needsCapacityCheck) {
+    sql += ` AND (
+      (SELECT max_guests_total FROM events WHERE id = ?) IS NULL
+      OR (SELECT COALESCE(SUM(party_total), 0) FROM rsvps
+           WHERE event_id = ? AND status = 'attending' AND id != ?) + ? <=
+         (SELECT max_guests_total FROM events WHERE id = ?)
+    )`
+    binds.push(existing.event_id, existing.event_id, rsvpId, newPartyTotal, existing.event_id)
+  }
+
+  const result = await db
+    .prepare(sql)
     .bind(...binds)
     .run()
+
+  if (needsCapacityCheck && result.meta.changes === 0) {
+    // Row wasn't updated because the capacity clause failed. Fetch current
+    // numbers for the error message only — this read is not part of the
+    // atomicity guarantee, it's purely informational for the caller.
+    const event = await db
+      .prepare('SELECT max_guests_total FROM events WHERE id = ? LIMIT 1')
+      .bind(existing.event_id)
+      .first<{ max_guests_total: number | null }>()
+    const otherAttending = await db
+      .prepare(
+        `SELECT COALESCE(SUM(party_total), 0) as total FROM rsvps
+         WHERE event_id = ? AND status = 'attending' AND id != ?`,
+      )
+      .bind(existing.event_id, rsvpId)
+      .first<{ total: number }>()
+    const currentOtherTotal = Number(otherAttending?.total ?? 0)
+    return {
+      success: false,
+      reason: 'capacity_exceeded',
+      current: currentOtherTotal + (oldStatus === 'attending' ? oldPartyTotal : 0),
+      capacity: event?.max_guests_total ?? 0,
+    }
+  }
+
   return { success: true }
 }
 

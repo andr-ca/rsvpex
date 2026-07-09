@@ -202,3 +202,78 @@ describe('handleScheduled — audit purge job', () => {
     expect(recent).not.toBeNull()
   })
 })
+
+// ── Auth purge job (S-6) ────────────────────────────────────────────────────
+
+describe('handleScheduled — auth purge job (S-6 in recommendations.md)', () => {
+  afterEach(async () => {
+    await env.DB.prepare('DELETE FROM sessions').run()
+    await env.DB.prepare('DELETE FROM password_reset_tokens').run()
+    await env.DB.prepare('DELETE FROM admin_users').run()
+  })
+
+  it('deletes expired sessions and used/expired reset tokens, keeps live ones', async () => {
+    const userId = crypto.randomUUID()
+    await env.DB.prepare('INSERT INTO admin_users (id, email, password_hash) VALUES (?, ?, ?)')
+      .bind(userId, `cron${userId.slice(0, 6)}@test.com`, 'x')
+      .run()
+
+    const expiredSessionId = crypto.randomUUID()
+    await env.DB.prepare('INSERT INTO sessions (id, admin_user_id, expires_at) VALUES (?, ?, ?)')
+      .bind(expiredSessionId, userId, new Date(Date.now() - 1000).toISOString())
+      .run()
+
+    const liveSessionId = crypto.randomUUID()
+    await env.DB.prepare('INSERT INTO sessions (id, admin_user_id, expires_at) VALUES (?, ?, ?)')
+      .bind(liveSessionId, userId, new Date(Date.now() + 3600_000).toISOString())
+      .run()
+
+    const usedTokenId = crypto.randomUUID()
+    await env.DB.prepare(
+      'INSERT INTO password_reset_tokens (id, admin_user_id, token_hash, expires_at, used_at) VALUES (?, ?, ?, ?, ?)',
+    )
+      .bind(
+        usedTokenId,
+        userId,
+        'usedhash',
+        new Date(Date.now() + 3600_000).toISOString(),
+        new Date().toISOString(),
+      )
+      .run()
+
+    const liveTokenId = crypto.randomUUID()
+    await env.DB.prepare(
+      'INSERT INTO password_reset_tokens (id, admin_user_id, token_hash, expires_at, used_at) VALUES (?, ?, ?, ?, NULL)',
+    )
+      .bind(liveTokenId, userId, 'livehash', new Date(Date.now() + 3600_000).toISOString())
+      .run()
+
+    const testEnv = {
+      ...env,
+      NOTIFICATIONS_QUEUE: { sendBatch: vi.fn().mockResolvedValue(undefined) },
+    }
+
+    await handleScheduled(mockController, testEnv as unknown as Env, mockCtx)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const expiredSession = await env.DB.prepare('SELECT id FROM sessions WHERE id = ?')
+      .bind(expiredSessionId)
+      .first()
+    expect(expiredSession).toBeNull()
+
+    const liveSession = await env.DB.prepare('SELECT id FROM sessions WHERE id = ?')
+      .bind(liveSessionId)
+      .first()
+    expect(liveSession).not.toBeNull()
+
+    const usedToken = await env.DB.prepare('SELECT id FROM password_reset_tokens WHERE id = ?')
+      .bind(usedTokenId)
+      .first()
+    expect(usedToken).toBeNull()
+
+    const liveToken = await env.DB.prepare('SELECT id FROM password_reset_tokens WHERE id = ?')
+      .bind(liveTokenId)
+      .first()
+    expect(liveToken).not.toBeNull()
+  })
+})

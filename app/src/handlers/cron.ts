@@ -4,6 +4,7 @@
  * Jobs:
  * 1. Reminder emails: query events with reminders due today → enqueue per-RSVP reminder messages
  * 2. Audit log purge: delete audit_logs rows older than 365 days
+ * 3. Session/reset-token purge: delete expired sessions + used/expired password reset tokens
  *
  * @req NOTIF-04 — reminder emails N days before event
  * @req SEC-04 — 365-day audit log purge
@@ -13,6 +14,8 @@ import {
   queryAttendingRsvpsForEvent,
   buildReminderMessages,
   purgeOldAuditLogs,
+  purgeExpiredSessions,
+  purgeExpiredResetTokens,
 } from '../domain/cron'
 import type { NotificationMessage } from './queue'
 
@@ -21,7 +24,7 @@ export async function handleScheduled(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<void> {
-  ctx.waitUntil(Promise.all([runReminderJob(env), runAuditPurgeJob(env)]))
+  ctx.waitUntil(Promise.all([runReminderJob(env), runAuditPurgeJob(env), runAuthPurgeJob(env)]))
 }
 
 async function runReminderJob(env: Env): Promise<void> {
@@ -46,5 +49,15 @@ async function runAuditPurgeJob(env: Env): Promise<void> {
   const deleted = await purgeOldAuditLogs(env.DB)
   if (deleted > 0) {
     console.log(`Purged ${deleted} audit_log rows older than 365 days`)
+  }
+}
+
+async function runAuthPurgeJob(env: Env): Promise<void> {
+  const [sessions, resetTokens] = await Promise.all([
+    purgeExpiredSessions(env.DB),
+    purgeExpiredResetTokens(env.DB),
+  ])
+  if (sessions > 0 || resetTokens > 0) {
+    console.log(`Purged ${sessions} expired sessions, ${resetTokens} expired/used reset tokens`)
   }
 }

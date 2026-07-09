@@ -89,3 +89,37 @@ export async function purgeOldAuditLogs(db: D1Database): Promise<number> {
     .run()
   return result.meta?.changes ?? 0
 }
+
+/**
+ * Purge expired sessions. Session rows aren't self-cleaning — expired ones
+ * would otherwise sit in D1 forever, growing the table and the surface
+ * area of any future leak (S-6 in recommendations.md).
+ * Returns the number of rows deleted.
+ */
+export async function purgeExpiredSessions(db: D1Database): Promise<number> {
+  // sessions.expires_at is written as a JS `Date.toISOString()` string
+  // ("...T...Z"), not SQLite's `datetime('now')` format ("... ..." with a
+  // space) — comparing against the latter would silently never match due to
+  // lexicographic ordering differing between the two formats. Compare
+  // against a JS-formatted "now" instead, matching how getSession() does it.
+  const now = new Date().toISOString()
+  const result = await db.prepare(`DELETE FROM sessions WHERE expires_at < ?`).bind(now).run()
+  return result.meta?.changes ?? 0
+}
+
+/**
+ * Purge password reset tokens that are expired or already used. Same
+ * rationale as purgeExpiredSessions (S-6 in recommendations.md): a used or
+ * expired token is worthless for its intended purpose but still worth
+ * clearing out of storage.
+ * Returns the number of rows deleted.
+ */
+export async function purgeExpiredResetTokens(db: D1Database): Promise<number> {
+  // Same JS-vs-SQLite datetime format mismatch as purgeExpiredSessions above.
+  const now = new Date().toISOString()
+  const result = await db
+    .prepare(`DELETE FROM password_reset_tokens WHERE expires_at < ? OR used_at IS NOT NULL`)
+    .bind(now)
+    .run()
+  return result.meta?.changes ?? 0
+}

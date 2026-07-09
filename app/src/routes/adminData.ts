@@ -9,10 +9,25 @@
  * @req ADMIN-09 — CSV import: POST /rsvp/admin/events/:id/import
  */
 import { Hono } from 'hono'
+import { getCookie } from 'hono/cookie'
 import { getEvent } from '../domain/adminEvents'
 import { requireAdmin } from '../middleware/requireAdmin'
+import { writeAuditLog } from '../domain/audit'
+import { hashToken } from '../domain/adminAuth'
 import { rsvpsToCsv, rsvpsToJson, parseImportCsv, isSessionFresh } from '../domain/dataManagement'
 import type { RsvpExportRow, ImportRow } from '../domain/dataManagement'
+
+/** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
+function fireAuditLog(
+  c: { executionCtx?: { waitUntil: (p: Promise<unknown>) => void } },
+  p: Promise<void>,
+): void {
+  try {
+    c.executionCtx?.waitUntil(p.catch(() => {}))
+  } catch {
+    void p.catch(() => {})
+  }
+}
 
 const adminDataRouter = new Hono<{ Bindings: Env; Variables: { adminUserId: string } }>()
 
@@ -34,6 +49,18 @@ adminDataRouter.get('/rsvp/admin/events/:id/export.csv', async (c) => {
   const date = new Date().toISOString().slice(0, 10)
   const filename = `${event.slug}-rsvps-${date}.csv`
 
+  // @req SEC-04 — exports touch every guest's PII; audit them (C-13 in recommendations.md).
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'event',
+      entityId: event.id,
+      action: 'export',
+      diff: { format: 'csv', row_count: rows.results.length },
+    }),
+  )
+
   return new Response(csv, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
@@ -52,16 +79,13 @@ adminDataRouter.get('/rsvp/admin/events/:id/export.json', async (c) => {
 
   if (includeTokens) {
     // Require fresh session (issued within last 15 minutes)
-    const sessionId = c.req.raw.headers
-      .get('cookie')
-      ?.split(';')
-      .map((s) => s.trim())
-      .find((s) => s.startsWith('session_id='))
-      ?.slice('session_id='.length)
+    const sessionId = getCookie(c, 'session_id')
 
     if (sessionId) {
+      // Sessions are stored as SHA-256(token), not the raw cookie value
+      // (S-15 in recommendations.md) — hash before looking up.
       const session = await c.env.DB.prepare('SELECT created_at FROM sessions WHERE id = ? LIMIT 1')
-        .bind(sessionId)
+        .bind(await hashToken(sessionId))
         .first<{ created_at: string }>()
 
       if (!session || !isSessionFresh(session.created_at)) {
@@ -84,6 +108,17 @@ adminDataRouter.get('/rsvp/admin/events/:id/export.json', async (c) => {
   const data = rsvpsToJson(rows.results)
   const date = new Date().toISOString().slice(0, 10)
   const filename = `${event.slug}-rsvps-${date}.json`
+
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'event',
+      entityId: event.id,
+      action: 'export',
+      diff: { format: 'json', row_count: rows.results.length, include_tokens: includeTokens },
+    }),
+  )
 
   return new Response(JSON.stringify(data, null, 2), {
     headers: {
@@ -147,57 +182,87 @@ adminDataRouter.post('/rsvp/admin/events/:id/import', async (c) => {
     reason: e.error,
   }))
 
+  // Prefetch existing emails in ONE query instead of one SELECT per row, and
+  // insert via db.batch() in chunks instead of one INSERT per row (C-8 in
+  // recommendations.md: up to 1000 rows × 2 sequential D1 round-trips could
+  // exceed Workers subrequest limits and made large imports slow/fragile).
+  const existingEmailsResult = await c.env.DB.prepare(
+    'SELECT lower(email) as email FROM rsvps WHERE event_id = ? AND email IS NOT NULL',
+  )
+    .bind(event.id)
+    .all<{ email: string }>()
+  const existingEmails = new Set(existingEmailsResult.results.map((r) => r.email))
+
+  const now = new Date().toISOString()
+  const toInsert: Array<{ rowNum: number; data: ImportRow; id: string; token: string }> = []
+
   for (const { rowNum, data } of dataRows) {
-    // Duplicate email check
     if (data.email) {
-      const existing = await c.env.DB.prepare(
-        'SELECT id FROM rsvps WHERE event_id = ? AND lower(email) = lower(?) LIMIT 1',
-      )
-        .bind(event.id, data.email)
-        .first<{ id: string }>()
-      if (existing) {
+      const emailLower = data.email.toLowerCase()
+      if (existingEmails.has(emailLower)) {
         errors.push({ row: rowNum, reason: `duplicate email: ${data.email}` })
         continue
       }
+      existingEmails.add(emailLower) // catch duplicates within the same CSV too
     }
+    toInsert.push({ rowNum, data, id: crypto.randomUUID(), token: crypto.randomUUID() })
+  }
 
-    const id = crypto.randomUUID()
-    const token = crypto.randomUUID()
-    const now = new Date().toISOString()
+  const buildInsert = (row: { data: ImportRow; id: string; token: string }) =>
+    c.env.DB.prepare(
+      `INSERT INTO rsvps (id, event_id, name, email, phone, status, adults, parents_count, siblings_count, children_count, dietary, notes, answers, rsvp_token, source, submitted_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, '{}', ?, 'import', ?, ?, ?)`,
+    ).bind(
+      row.id,
+      event.id,
+      row.data.name,
+      row.data.email ?? null,
+      row.data.phone ?? null,
+      row.data.status ?? 'attending',
+      row.data.adults ?? 1,
+      row.data.parents_count ?? 0,
+      row.data.siblings_count ?? 0,
+      row.data.children_count ?? 0,
+      row.data.notes ?? null,
+      row.token,
+      now,
+      now,
+      now,
+    )
 
+  const BATCH_SIZE = 50
+  for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+    const chunk = toInsert.slice(i, i + BATCH_SIZE)
     try {
-      await c.env.DB.prepare(
-        `
-        INSERT INTO rsvps (id, event_id, name, email, phone, status, adults, parents_count, siblings_count, children_count, dietary, notes, answers, rsvp_token, source, submitted_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, '{}', ?, 'import', ?, ?, ?)
-      `,
-      )
-        .bind(
-          id,
-          event.id,
-          data.name,
-          data.email ?? null,
-          data.phone ?? null,
-          data.status ?? 'attending',
-          data.adults ?? 1,
-          data.parents_count ?? 0,
-          data.siblings_count ?? 0,
-          data.children_count ?? 0,
-          data.notes ?? null,
-          token,
-          now,
-          now,
-          now,
-        )
-        .run()
-      imported++
-    } catch (err) {
-      errors.push({
-        row: rowNum,
-        reason: `DB error: ${err instanceof Error ? err.message : 'unknown'}`,
-      })
+      await c.env.DB.batch(chunk.map(buildInsert))
+      imported += chunk.length
+    } catch {
+      // A batch failure doesn't identify which row failed — fall back to
+      // per-row inserts for just this chunk so one bad row doesn't sink it.
+      for (const row of chunk) {
+        try {
+          await buildInsert(row).run()
+          imported++
+        } catch (rowErr) {
+          errors.push({
+            row: row.rowNum,
+            reason: `DB error: ${rowErr instanceof Error ? rowErr.message : 'unknown'}`,
+          })
+        }
+      }
     }
   }
+
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'event',
+      entityId: event.id,
+      action: 'import',
+      diff: { imported, failed: errors.length },
+    }),
+  )
 
   return c.json({ imported, failed: errors.length, errors })
 })

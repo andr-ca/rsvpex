@@ -9,6 +9,7 @@ import { Hono } from 'hono'
 import QRCode from 'qrcode'
 import { getEvent } from '../domain/adminEvents'
 import { requireAdmin } from '../middleware/requireAdmin'
+import { escHtml } from '../views/layout'
 
 const adminQrRouter = new Hono<{ Bindings: Env; Variables: { adminUserId: string } }>()
 
@@ -29,18 +30,18 @@ adminQrRouter.get('/rsvp/admin/events/:id/qr', async (c) => {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>QR Code — ${event.title.replace(/</g, '&lt;')}</title>
+  <title>QR Code — ${escHtml(event.title)}</title>
   <style>body{font-family:system-ui,sans-serif;max-width:600px;margin:3rem auto;padding:0 1rem;text-align:center}
   img{border:1px solid #eee;padding:1rem;border-radius:8px} a{display:inline-block;margin-top:1rem;padding:.75rem 2rem;background:#0066cc;color:#fff;text-decoration:none;border-radius:4px}</style>
 </head>
 <body>
-  <h1>${event.title.replace(/</g, '&lt;')} — QR Code</h1>
-  <p>Encodes: <code>${eventUrl}</code></p>
-  <img src="${dataUrl}" alt="QR code for ${event.title.replace(/"/g, '&quot;')}" width="256" height="256">
+  <h1>${escHtml(event.title)} — QR Code</h1>
+  <p>Encodes: <code>${escHtml(eventUrl)}</code></p>
+  <img src="${dataUrl}" alt="QR code for ${escHtml(event.title)}" width="256" height="256">
   <br>
-  <a href="${dataUrl}" download="${event.slug}-qr.png">Download PNG</a>
+  <a href="${dataUrl}" download="${escHtml(event.slug)}-qr.png">Download PNG</a>
   <br><br>
-  <a href="/rsvp/admin/events/${event.id}">← Back to Event</a>
+  <a href="/rsvp/admin/events/${escHtml(event.id)}">← Back to Event</a>
 </body>
 </html>`)
 })

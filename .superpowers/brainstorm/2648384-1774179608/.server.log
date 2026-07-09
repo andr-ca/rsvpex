@@ -1,8 +1,0 @@
-{"type":"server-started","port":55800,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:55800","screen_dir":"/home/andrey/projects/rsvpex/.superpowers/brainstorm/2648384-1774179608"}
-{"type":"screen-added","file":"/home/andrey/projects/rsvpex/.superpowers/brainstorm/2648384-1774179608/visual-direction.html"}
-{"type":"screen-added","file":"/home/andrey/projects/rsvpex/.superpowers/brainstorm/2648384-1774179608/visual-direction-v2.html"}
-{"type":"screen-added","file":"/home/andrey/projects/rsvpex/.superpowers/brainstorm/2648384-1774179608/waiting.html"}
-{"type":"screen-added","file":"/home/andrey/projects/rsvpex/.superpowers/brainstorm/2648384-1774179608/layout.html"}
-{"type":"screen-added","file":"/home/andrey/projects/rsvpex/.superpowers/brainstorm/2648384-1774179608/layout-v2.html"}
-{"type":"screen-added","file":"/home/andrey/projects/rsvpex/.superpowers/brainstorm/2648384-1774179608/layout-v3.html"}
-{"type":"server-stopped","reason":"idle timeout"}

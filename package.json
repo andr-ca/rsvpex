@@ -1,6 +1,7 @@
 {
   "name": "rsvpex",
   "private": true,
+  "packageManager": "pnpm@10.28.0",
 
   "scripts": {
     "dev": "pnpm --filter app dev",

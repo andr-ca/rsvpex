@@ -9,6 +9,7 @@ import rsvpSubmitRouter from './routes/rsvpSubmit'
 import rsvpPatchRouter from './routes/rsvpPatch'
 import thankYouRouter from './routes/rsvpThankYou'
 import icsRouter from './routes/rsvpIcs'
+import adminAssetsRouter from './routes/adminAssets'
 import adminSetupRouter from './routes/adminSetup'
 import adminLoginRouter from './routes/adminLogin'
 import adminLogoutRouter from './routes/adminLogout'
@@ -39,6 +40,9 @@ app.route('/rsvp', icsRouter)
 app.route('/rsvp', rsvpFormRouter)
 app.route('/rsvp', rsvpSubmitRouter)
 app.route('/rsvp', rsvpPatchRouter)
+
+// Static assets for admin pages (no auth required — see P0-5 in recommendations.md)
+app.route('/', adminAssetsRouter)
 
 // Phase 4: Admin auth — public endpoints (no requireAdmin)
 app.route('/rsvp/admin', adminSetupRouter)

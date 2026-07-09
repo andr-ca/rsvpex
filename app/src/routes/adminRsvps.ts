@@ -18,8 +18,10 @@ import {
   promoteFromWaitlist,
   deleteRsvp,
 } from '../domain/adminRsvps'
+import { revokeToken } from '../domain/rsvpEdit'
 import { requireAdmin } from '../middleware/requireAdmin'
-import { writeAuditLog } from '../domain/audit'
+import { writeAuditLog, buildDiff, redactPii } from '../domain/audit'
+import { escHtml, adminPage, csrfField } from '../views/layout'
 
 /** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
 function fireAuditLog(
@@ -33,7 +35,9 @@ function fireAuditLog(
   }
 }
 
-const adminRsvpsRouter = new Hono<{ Bindings: Env; Variables: { adminUserId: string } }>()
+type Variables = { adminUserId: string; csrfToken?: string }
+
+const adminRsvpsRouter = new Hono<{ Bindings: Env; Variables: Variables }>()
 
 adminRsvpsRouter.use('/rsvp/admin/events/*', requireAdmin)
 
@@ -42,6 +46,7 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
   const stats = await getEventStats(c.env.DB, event.id)
+  const csrfToken = c.get('csrfToken') ?? ''
 
   const page = Math.max(1, Number(c.req.query('page') || 1))
   const statusFilter = c.req.query('status') as
@@ -77,6 +82,7 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
     ${flash === 'no_capacity' ? '<div class="error">No capacity available — promotion blocked.</div>' : ''}
     ${flash === 'saved' ? '<div class="success">RSVP updated.</div>' : ''}
     ${flash === 'capacity_error' ? '<div class="error">Edit would exceed capacity. Reduce party size or free capacity first.</div>' : ''}
+    ${flash === 'validation_error' ? '<div class="error">Could not save — check the values you entered and try again.</div>' : ''}
     <div class="capacity-meter">
       Capacity: ${stats.attending} attending${stats.capacity != null ? ` / ${stats.capacity} max` : ' (unlimited)'}
       · ${stats.waitlist} waitlist · ${stats.not_attending} not attending · ${stats.maybe} maybe
@@ -130,11 +136,16 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
                 r.status === 'waitlist'
                   ? `
                 · <form method="POST" action="/rsvp/admin/events/${event.id}/rsvps/${r.id}/promote" style="display:inline">
+                    ${csrfField(csrfToken)}
                     <button type="submit" class="btn" style="padding:.2rem .5rem;font-size:.85rem">Promote</button>
                   </form>
               `
                   : ''
               }
+              · <form method="POST" action="/rsvp/admin/events/${event.id}/rsvps/${r.id}/delete" style="display:inline" data-confirm="Delete this RSVP? This cannot be undone.">
+                  ${csrfField(csrfToken)}
+                  <button type="submit" class="btn" style="padding:.2rem .5rem;font-size:.85rem;color:#c00">Delete</button>
+                </form>
             </td>
           </tr>`
           })
@@ -150,12 +161,14 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
           Optional: <code>email, phone, status, adults, parents_count, siblings_count, children_count, notes</code>
         </p>
         <form method="POST" action="/rsvp/admin/events/${event.id}/import" enctype="multipart/form-data">
+          ${csrfField(csrfToken)}
           <input type="file" name="csv_file" accept=".csv,text/csv" required style="margin-bottom:.75rem">
           <button type="submit" class="btn btn-primary">Import</button>
         </form>
       </div>
     </details>
   `,
+      csrfToken,
     ),
   )
 })
@@ -167,14 +180,30 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => {
   const rsvp = await getRsvp(c.env.DB, c.req.param('rsvpId'))
   if (!rsvp || rsvp.event_id !== event.id) return c.notFound()
   const stats = await getEventStats(c.env.DB, event.id)
+  const csrfToken = c.get('csrfToken') ?? ''
+  const revoked = c.req.query('revoked') === '1'
   return c.html(
     adminPage(
       `Edit RSVP — RSVPex Admin`,
       `
     <h1>Edit RSVP</h1>
+    ${revoked ? '<div class="success">Edit link regenerated. The guest\'s old link no longer works.</div>' : ''}
     <div class="capacity-meter">Event capacity: ${stats.attending} attending${stats.capacity != null ? ` / ${stats.capacity} max` : ' (unlimited)'}</div>
-    ${rsvpEditForm(event.id, rsvp)}
+    ${rsvpEditForm(event.id, rsvp, csrfToken)}
+    <details style="margin-top:1.5rem">
+      <summary style="cursor:pointer;font-weight:600">Guest edit link</summary>
+      <div style="margin-top:.75rem;padding:1rem;background:#f9f9f9;border-radius:4px;border:1px solid #eee">
+        <p style="margin-top:0;font-size:.9rem;color:#555">
+          Regenerating invalidates the guest's current edit link (e.g. if it was shared publicly by accident).
+        </p>
+        <form method="POST" action="/rsvp/admin/events/${event.id}/rsvps/${rsvp.id}/revoke-token" data-confirm="Regenerate this guest's edit link? Their old link will stop working.">
+          ${csrfField(csrfToken)}
+          <button type="submit" class="btn">Regenerate Edit Link</button>
+        </form>
+      </div>
+    </details>
   `,
+      csrfToken,
     ),
   )
 })
@@ -189,7 +218,10 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => 
   const body = await c.req.parseBody()
   const parsed = rsvpEditSchema.safeParse(body)
   if (!parsed.success) {
-    return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=capacity_error`, 303)
+    // Distinct from capacity_error (C-15 in recommendations.md): the old code
+    // conflated "you typed something invalid" with "this would exceed capacity",
+    // which sends admins hunting for a capacity problem that doesn't exist.
+    return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=validation_error`, 303)
   }
   const d = parsed.data
   const result = await updateRsvpWithCapacityGuard(c.env.DB, rsvp.id, {
@@ -207,6 +239,30 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => 
   if (!result.success) {
     return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=capacity_error`, 303)
   }
+
+  // @req SEC-04 — real before/after diff with PII redacted (C-13 in recommendations.md).
+  const before = await redactPii({
+    name: rsvp.name,
+    email: rsvp.email,
+    phone: rsvp.phone,
+    adults: rsvp.adults,
+    parents_count: rsvp.parents_count,
+    siblings_count: rsvp.siblings_count,
+    children_count: rsvp.children_count,
+    notes: rsvp.notes,
+    status: rsvp.status,
+  })
+  const after = await redactPii({
+    name: d.name,
+    email: d.email || null,
+    phone: d.phone || null,
+    adults: d.adults,
+    parents_count: d.parents_count,
+    siblings_count: d.siblings_count,
+    children_count: d.children_count,
+    notes: d.notes || null,
+    status: d.status,
+  })
   fireAuditLog(
     c,
     writeAuditLog(c.env.DB, {
@@ -214,10 +270,31 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => 
       entityType: 'rsvp',
       entityId: rsvp.id,
       action: 'rsvp_edit',
-      diff: { status: d.status },
+      diff: buildDiff(before, after),
     }),
   )
   return c.redirect(`/rsvp/admin/events/${event.id}/rsvps?flash=saved`, 303)
+})
+
+// POST /rsvp/admin/events/:id/rsvps/:rsvpId/revoke-token — regenerate the guest's edit link (GUEST-05)
+adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/revoke-token', async (c) => {
+  const event = await getEvent(c.env.DB, c.req.param('id'))
+  if (!event) return c.notFound()
+  const rsvp = await getRsvp(c.env.DB, c.req.param('rsvpId'))
+  if (!rsvp || rsvp.event_id !== event.id) return c.notFound()
+
+  await revokeToken(c.env.DB, rsvp.id)
+  fireAuditLog(
+    c,
+    writeAuditLog(c.env.DB, {
+      actorId: c.get('adminUserId'),
+      entityType: 'rsvp',
+      entityId: rsvp.id,
+      action: 'token_rotate',
+      diff: null,
+    }),
+  )
+  return c.redirect(`/rsvp/admin/events/${event.id}/rsvps/${rsvp.id}/edit?revoked=1`, 303)
 })
 
 // POST /rsvp/admin/events/:id/rsvps/:rsvpId/promote
@@ -289,8 +366,9 @@ type RsvpRow = {
   status: string
 }
 
-function rsvpEditForm(eventId: string, rsvp: RsvpRow): string {
+function rsvpEditForm(eventId: string, rsvp: RsvpRow, csrfToken: string): string {
   return `<form method="POST" action="/rsvp/admin/events/${eventId}/rsvps/${rsvp.id}/edit">
+    ${csrfField(csrfToken)}
     <label>Name *</label>
     <input name="name" required maxlength="200" value="${escHtml(rsvp.name)}">
     <label>Email</label>
@@ -337,67 +415,4 @@ function paginationHtml(
   return `<div class="pagination">
     ${pages.map((n) => `<a href="${base}?page=${n}${p ? sep + p : ''}" class="${n === current ? 'active' : ''}">${n}</a>`).join('')}
   </div>`
-}
-
-function escHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function adminPage(title: string, content: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escHtml(title)}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1.5rem; }
-    nav { display: flex; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid #ddd; margin-bottom: 2rem; }
-    nav a, nav button { text-decoration: none; color: #333; background: none; border: none; cursor: pointer; font-size: 1rem; padding: 0; }
-    nav a:hover { color: #0066cc; }
-    h1 { margin-top: 0; }
-    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-    .page-header h1 { margin: 0; }
-    .btn { padding: .5rem 1rem; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; background: #f5f5f5; cursor: pointer; font-size: .9rem; display: inline-block; }
-    .btn:hover { background: #e5e5e5; }
-    .btn-primary { background: #0066cc; color: #fff; border-color: #0066cc; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: .5rem .75rem; text-align: left; border-bottom: 1px solid #eee; }
-    th { background: #f5f5f5; font-weight: 600; }
-    .badge { padding: .2rem .5rem; border-radius: 3px; font-size: .8rem; text-transform: uppercase; }
-    .badge-attending { background: #dfd; color: #060; }
-    .badge-waitlist { background: #ffeedd; color: #c60; }
-    .badge-not_attending { background: #fdd; color: #c00; }
-    .badge-maybe { background: #eef; color: #339; }
-    .error { color: #c00; background: #fee; padding: .75rem; border-radius: 4px; margin-bottom: 1rem; }
-    .success { color: #060; background: #efe; padding: .75rem; border-radius: 4px; margin-bottom: 1rem; }
-    label { display: block; margin-top: 1rem; font-weight: 600; }
-    input, select, textarea { display: block; width: 100%; padding: .5rem; margin-top: .25rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
-    textarea { min-height: 80px; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    .action-row { display: flex; gap: .75rem; margin-top: 1.5rem; }
-    .filter-bar { display: flex; gap: .75rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: flex-end; }
-    .filter-bar label { margin: 0; font-weight: normal; font-size: .85rem; }
-    .filter-bar input, .filter-bar select { width: auto; min-width: 110px; padding: .4rem; }
-    .capacity-meter { margin-bottom: 1rem; color: #555; font-size: .9rem; background: #f5f5f5; padding: .5rem .75rem; border-radius: 4px; }
-    .pagination { display: flex; gap: .5rem; margin-top: 1.5rem; flex-wrap: wrap; }
-    .pagination a { padding: .4rem .75rem; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; }
-    .pagination .active { background: #0066cc; color: #fff; border-color: #0066cc; }
-  </style>
-</head>
-<body>
-  <nav>
-    <a href="/rsvp/admin/">Dashboard</a>
-    <a href="/rsvp/admin/events">Events</a>
-    <form method="POST" action="/rsvp/admin/logout" style="margin:0">
-      <button>Log Out</button>
-    </form>
-  </nav>
-  ${content}
-</body>
-</html>`
 }

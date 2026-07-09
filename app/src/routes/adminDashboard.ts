@@ -9,6 +9,7 @@
  * @req ADMIN-03 — Dashboard tiles: active/upcoming/recent event counts, system status
  */
 import type { Context } from 'hono'
+import { adminPage, escHtml } from '../views/layout'
 
 type EventSummary = {
   id: string
@@ -64,46 +65,11 @@ async function getDashboardStats(db: D1Database): Promise<DashboardStats> {
 }
 
 export async function adminDashboardHandler(
-  c: Context<{ Bindings: Env; Variables: { adminUserId: string } }>,
+  c: Context<{ Bindings: Env; Variables: { adminUserId: string; csrfToken?: string } }>,
 ) {
   const stats = await getDashboardStats(c.env.DB)
-  return c.html(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Dashboard — RSVPex</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1.5rem; }
-    nav { display: flex; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid #ddd; margin-bottom: 2rem; }
-    nav a { text-decoration: none; color: #333; }
-    nav a:hover { color: #0066cc; }
-    h1 { margin-top: 0; }
-    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-    .tile { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 1.25rem; text-align: center; }
-    .tile-value { font-size: 2.5rem; font-weight: 700; color: #0066cc; }
-    .tile-label { font-size: .85rem; color: #555; margin-top: .25rem; }
-    .tile-status-ok { border-left: 4px solid #4caf50; }
-    .tile-status-error { border-left: 4px solid #f44336; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: .5rem .75rem; text-align: left; border-bottom: 1px solid #eee; }
-    th { background: #f5f5f5; }
-    .badge { padding: .2rem .5rem; border-radius: 3px; font-size: .8rem; text-transform: uppercase; }
-    .badge-draft { background: #eee; color: #555; }
-    .badge-published { background: #dfd; color: #060; }
-    .badge-archived { background: #eee; color: #999; }
-    .btn { padding: .5rem 1rem; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; background: #f5f5f5; }
-  </style>
-</head>
-<body>
-  <nav>
-    <a href="/rsvp/admin/">Dashboard</a>
-    <a href="/rsvp/admin/events">Events</a>
-    <form method="POST" action="/rsvp/admin/logout" style="margin:0">
-      <button style="background:none;border:none;cursor:pointer;color:#333;padding:0;font-size:1rem">Log Out</button>
-    </form>
-  </nav>
+  const csrfToken = c.get('csrfToken') ?? ''
+  const content = `
   <h1>Dashboard</h1>
   <div class="tiles" aria-label="Dashboard statistics">
     <div class="tile">
@@ -137,7 +103,7 @@ export async function adminDashboardHandler(
             .map(
               (e) => `
             <tr>
-              <td><a href="/rsvp/admin/events/${e.id}">${e.title.replace(/</g, '&lt;')}</a></td>
+              <td><a href="/rsvp/admin/events/${escHtml(e.id)}">${escHtml(e.title)}</a></td>
               <td><span class="badge badge-${e.status}">${e.status}</span></td>
               <td>${e.start_at.slice(0, 10)}</td>
               <td><a href="/rsvp/admin/events/${e.id}/rsvps">RSVPs</a></td>
@@ -147,7 +113,6 @@ export async function adminDashboardHandler(
             .join('')}
         </tbody>
       </table>`
-  }
-</body>
-</html>`)
+  }`
+  return c.html(adminPage('Admin Dashboard — RSVPex', content, csrfToken))
 }

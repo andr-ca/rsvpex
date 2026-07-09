@@ -10,9 +10,6 @@ export const adminUsers = sqliteTable('admin_users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   displayName: text('display_name'),
-  role: text('role', { enum: ['admin', 'editor'] })
-    .notNull()
-    .default('admin'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   failedLoginAttempts: integer('failed_login_attempts').notNull().default(0),
   lockedUntil: text('locked_until'), // ISO-8601 or null

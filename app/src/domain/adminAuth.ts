@@ -17,6 +17,13 @@ const ARGON2_P = 1 // parallelism (Workers: single-threaded)
 const LOCKOUT_ATTEMPTS = 5
 const LOCKOUT_MINUTES = 15
 
+// Fallback pepper used only when ARGON2_PEPPER isn't configured (local
+// dev/tests). Production MUST set ARGON2_PEPPER via `wrangler secret put` —
+// see S-11 in recommendations.md. A pepper protects against offline
+// cracking of a leaked `admin_users` table alone (unlike the per-hash salt,
+// it never leaves the Worker).
+const FALLBACK_PEPPER = 'rsvpex-argon2-fallback-pepper-set-ARGON2_PEPPER-in-production'
+
 export type SessionRow = {
   id: string
   admin_user_id: string
@@ -27,10 +34,12 @@ export type SessionRow = {
 /**
  * Hashes a plaintext password using argon2id at OWASP minimum params.
  * Returns a "salt_hex:hash_hex" string so verification can re-derive.
+ *
+ * @param pepper - Env.ARGON2_PEPPER; falls back to a fixed pepper if unset
  */
-export async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string, pepper?: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(32))
-  const hashBytes = argon2id(utf8ToBytes(password), salt, {
+  const hashBytes = argon2id(utf8ToBytes((pepper || FALLBACK_PEPPER) + password), salt, {
     m: ARGON2_M,
     t: ARGON2_T,
     p: ARGON2_P,
@@ -42,14 +51,20 @@ export async function hashPassword(password: string): Promise<string> {
 
 /**
  * Verifies a plaintext password against a stored hash string.
+ *
+ * @param pepper - Env.ARGON2_PEPPER; falls back to a fixed pepper if unset
  */
-export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+export async function verifyPassword(
+  password: string,
+  storedHash: string,
+  pepper?: string,
+): Promise<boolean> {
   try {
     const [saltHex, hashHex] = storedHash.split(':')
     if (!saltHex || !hashHex) return false
     const salt = hexToBytes(saltHex)
     const expected = hexToBytes(hashHex)
-    const actual = argon2id(utf8ToBytes(password), salt, {
+    const actual = argon2id(utf8ToBytes((pepper || FALLBACK_PEPPER) + password), salt, {
       m: ARGON2_M,
       t: ARGON2_T,
       p: ARGON2_P,
@@ -116,42 +131,65 @@ export async function clearLockout(db: D1Database, userId: string): Promise<void
 }
 
 /**
+ * Generates a 32-byte random session token, hex-encoded (64 chars). Higher
+ * entropy than crypto.randomUUID() (122 bits) and matches the recommended
+ * fix for S-15 in recommendations.md.
+ */
+function generateSessionToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+/**
  * Creates a new session for the given admin user.
- * Returns the session ID (used as cookie value).
+ *
+ * Only SHA-256(token) is stored in D1 (S-15 in recommendations.md): a
+ * plaintext session table is a bearer-credential leak waiting to happen —
+ * anyone with read access to a D1 backup/export could impersonate any
+ * logged-in admin. Hashing means a DB read-leak alone isn't enough; the
+ * attacker still needs the raw cookie value, which never touches storage.
+ *
+ * Returns the raw token (used as the cookie value) — never store this
+ * anywhere else.
  */
 export async function createSession(
   db: D1Database,
   adminUserId: string,
   expiryDays: number,
 ): Promise<string> {
-  const sessionId = crypto.randomUUID()
+  const rawToken = generateSessionToken()
+  const tokenHash = await hashToken(rawToken)
   const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString()
   await db
     .prepare('INSERT INTO sessions (id, admin_user_id, expires_at) VALUES (?, ?, ?)')
-    .bind(sessionId, adminUserId, expiresAt)
+    .bind(tokenHash, adminUserId, expiresAt)
     .run()
-  return sessionId
+  return rawToken
 }
 
 /**
- * Retrieves a valid (non-expired) session by ID.
+ * Retrieves a valid (non-expired) session by raw cookie token.
  * Returns null if session does not exist or has expired.
  */
-export async function getSession(db: D1Database, sessionId: string): Promise<SessionRow | null> {
+export async function getSession(db: D1Database, rawToken: string): Promise<SessionRow | null> {
+  const tokenHash = await hashToken(rawToken)
   const now = new Date().toISOString()
   return db
     .prepare(
       'SELECT id, admin_user_id, expires_at, created_at FROM sessions WHERE id = ? AND expires_at > ?',
     )
-    .bind(sessionId, now)
+    .bind(tokenHash, now)
     .first<SessionRow>()
 }
 
 /**
- * Deletes a session (logout).
+ * Deletes a session (logout) by raw cookie token.
  */
-export async function deleteSession(db: D1Database, sessionId: string): Promise<void> {
-  await db.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run()
+export async function deleteSession(db: D1Database, rawToken: string): Promise<void> {
+  const tokenHash = await hashToken(rawToken)
+  await db.prepare('DELETE FROM sessions WHERE id = ?').bind(tokenHash).run()
 }
 
 /**
@@ -193,6 +231,10 @@ export async function createResetToken(
  * Returns the admin_user_id on success.
  * Returns null if token not found, expired, or already used.
  * On success, marks token as used (used_at = now).
+ *
+ * The check and the write happen in a SINGLE conditional UPDATE (C-12 in
+ * recommendations.md): the previous read-then-update let two concurrent uses
+ * of the same token both pass the "not yet used" check and both succeed.
  */
 export async function consumeResetToken(
   db: D1Database,
@@ -200,21 +242,30 @@ export async function consumeResetToken(
 ): Promise<{ adminUserId: string } | null> {
   const tokenHash = await hashToken(rawToken)
   const now = new Date().toISOString()
-  const row = await db
+
+  const claim = await db
     .prepare(
-      `SELECT id, admin_user_id, used_at FROM password_reset_tokens
-       WHERE token_hash = ? AND expires_at > ? LIMIT 1`,
+      `UPDATE password_reset_tokens SET used_at = ?
+        WHERE token_hash = ? AND expires_at > ? AND used_at IS NULL`,
     )
-    .bind(tokenHash, now)
-    .first<{ id: string; admin_user_id: string; used_at: string | null }>()
-
-  if (!row) return null
-  if (row.used_at) return null // already used — caller should return 410
-
-  await db
-    .prepare('UPDATE password_reset_tokens SET used_at = ? WHERE id = ?')
-    .bind(now, row.id)
+    .bind(now, tokenHash, now)
     .run()
 
-  return { adminUserId: row.admin_user_id }
+  if (claim.meta.changes === 0) return null
+
+  const row = await db
+    .prepare('SELECT admin_user_id FROM password_reset_tokens WHERE token_hash = ? LIMIT 1')
+    .bind(tokenHash)
+    .first<{ admin_user_id: string }>()
+
+  return row ? { adminUserId: row.admin_user_id } : null
+}
+
+/**
+ * Deletes all sessions for an admin user — used after password reset (S-6 in
+ * recommendations.md: previously a reset didn't invalidate existing sessions,
+ * so "my password was compromised" didn't actually kick out the attacker).
+ */
+export async function deleteAllSessionsForUser(db: D1Database, adminUserId: string): Promise<void> {
+  await db.prepare('DELETE FROM sessions WHERE admin_user_id = ?').bind(adminUserId).run()
 }

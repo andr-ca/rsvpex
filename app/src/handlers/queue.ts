@@ -30,43 +30,48 @@ export type NotificationMessage =
   | { type: 'sms_confirmation'; rsvpId: string; eventId: string }
   | { type: 'reminder'; rsvpId: string; eventId: string }
 
-const BASE_URL = 'https://rsvpex.app'
+// Fallback only for local dev / tests where DEPLOYMENT_DOMAIN isn't configured.
+// Production deploys must set DEPLOYMENT_DOMAIN — see wrangler.jsonc.
+const FALLBACK_BASE_URL = 'http://localhost:8787'
 
 export async function handleQueue(
   batch: MessageBatch<NotificationMessage>,
   env: Env,
   _ctx: ExecutionContext,
 ): Promise<void> {
+  const baseUrl = env.DEPLOYMENT_DOMAIN ?? FALLBACK_BASE_URL
   for (const msg of batch.messages) {
     try {
-      await processMessage(msg.body, env)
+      await processMessage(msg.body, env, baseUrl)
       msg.ack()
     } catch (err) {
+      const attempt = msg.attempts ?? 1
       console.error('Queue message failed:', JSON.stringify(msg.body), String(err))
-      msg.retry()
+      // Exponential backoff, capped at 1 hour — see C-9 in recommendations.md.
+      msg.retry({ delaySeconds: Math.min(2 ** attempt * 30, 3600) })
     }
   }
 }
 
-async function processMessage(body: NotificationMessage, env: Env): Promise<void> {
+async function processMessage(body: NotificationMessage, env: Env, baseUrl: string): Promise<void> {
   switch (body.type) {
     case 'guest_confirmation':
-      await handleGuestConfirmation(body.rsvpId, body.eventId, env)
+      await handleGuestConfirmation(body.rsvpId, body.eventId, env, baseUrl)
       break
     case 'admin_alert':
       await handleAdminAlert(body.rsvpId, body.eventId, env)
       break
     case 'capacity_threshold':
-      await handleCapacityThreshold(body.eventId, body.threshold, body.currentAttending, env)
+      await handleCapacityThreshold(body.eventId, body.threshold, env)
       break
     case 'sms_confirmation':
-      await handleSmsConfirmation(body.rsvpId, body.eventId, env)
+      await handleSmsConfirmation(body.rsvpId, body.eventId, env, baseUrl)
       break
     case 'reminder':
-      await handleReminder(body.rsvpId, body.eventId, env)
+      await handleReminder(body.rsvpId, body.eventId, env, baseUrl)
       break
     default:
-      console.warn('Unknown notification type:', (body as any).type)
+      console.warn('Unknown notification type:', (body as { type: string }).type)
   }
 }
 
@@ -92,7 +97,12 @@ async function fetchEvent(db: D1Database, eventId: string): Promise<EventRow | n
 
 // ── Message handlers ─────────────────────────────────────────────────────────
 
-async function handleGuestConfirmation(rsvpId: string, eventId: string, env: Env): Promise<void> {
+async function handleGuestConfirmation(
+  rsvpId: string,
+  eventId: string,
+  env: Env,
+  baseUrl: string,
+): Promise<void> {
   if (await idempotencyAlreadySent(env.DB, rsvpId, 'guest_confirmation')) return
 
   const rsvp = await fetchRsvp(env.DB, rsvpId)
@@ -101,12 +111,16 @@ async function handleGuestConfirmation(rsvpId: string, eventId: string, env: Env
   const event = await fetchEvent(env.DB, eventId)
   if (!event) return
 
-  const payload = buildGuestConfirmationEmail(rsvp, event, BASE_URL)
+  const payload = buildGuestConfirmationEmail(rsvp, event, baseUrl)
   await sendEmail(payload, env)
   await markNotificationSent(env.DB, rsvpId, 'guest_confirmation')
 }
 
 async function handleAdminAlert(rsvpId: string, eventId: string, env: Env): Promise<void> {
+  // Idempotency guard (C-7 in recommendations.md): without this, a queue retry
+  // after a later message in the same batch fails resends the admin alert.
+  if (await idempotencyAlreadySent(env.DB, rsvpId, 'admin_alert')) return
+
   const adminEmail = env.ADMIN_FROM_EMAIL
   if (!adminEmail) return
 
@@ -118,12 +132,12 @@ async function handleAdminAlert(rsvpId: string, eventId: string, env: Env): Prom
 
   const payload = buildAdminAlertEmail(rsvp, event, adminEmail)
   await sendEmail(payload, env)
+  await markNotificationSent(env.DB, rsvpId, 'admin_alert')
 }
 
 async function handleCapacityThreshold(
   eventId: string,
   threshold: 80 | 100,
-  _currentAttending: number,
   env: Env,
 ): Promise<void> {
   const adminEmail = env.ADMIN_FROM_EMAIL
@@ -134,17 +148,31 @@ async function handleCapacityThreshold(
 
   if (!shouldNotifyThreshold(event, threshold)) return // already notified
 
-  const payload = buildCapacityThresholdEmail(event, threshold, adminEmail)
-  await sendEmail(payload, env)
-
-  // Mark threshold as notified
+  // Atomic claim BEFORE sending (C-7): two concurrent deliveries for the same
+  // threshold both passing the read-check above would otherwise both send the
+  // email. The conditional UPDATE means only one delivery can claim the row;
+  // the loser returns without sending. Trade-off: if sendEmail throws after a
+  // successful claim, this specific threshold email is not retried (the claim
+  // already marks it notified) — acceptable for a non-critical admin heads-up
+  // where "at most once" is preferable to duplicate alerts.
   const column = threshold === 80 ? 'threshold_80_notified_at' : 'threshold_100_notified_at'
-  await env.DB.prepare(`UPDATE events SET ${column} = datetime('now') WHERE id = ?`)
+  const claim = await env.DB.prepare(
+    `UPDATE events SET ${column} = datetime('now') WHERE id = ? AND ${column} IS NULL`,
+  )
     .bind(eventId)
     .run()
+  if (claim.meta.changes === 0) return // another delivery already claimed it
+
+  const payload = buildCapacityThresholdEmail(event, threshold, adminEmail)
+  await sendEmail(payload, env)
 }
 
-async function handleSmsConfirmation(rsvpId: string, eventId: string, env: Env): Promise<void> {
+async function handleSmsConfirmation(
+  rsvpId: string,
+  eventId: string,
+  env: Env,
+  baseUrl: string,
+): Promise<void> {
   if (await idempotencyAlreadySent(env.DB, rsvpId, 'sms_confirmation')) return
 
   const rsvp = await fetchRsvp(env.DB, rsvpId)
@@ -153,13 +181,22 @@ async function handleSmsConfirmation(rsvpId: string, eventId: string, env: Env):
   const event = await fetchEvent(env.DB, eventId)
   if (!event) return
 
-  const message = buildSmsMessage(rsvp, event, BASE_URL)
+  const message = buildSmsMessage(rsvp, event, baseUrl)
   await sendSms(rsvp.phone, message, env)
   await markNotificationSent(env.DB, rsvpId, 'sms_confirmation')
 }
 
-async function handleReminder(rsvpId: string, eventId: string, env: Env): Promise<void> {
-  if (await idempotencyAlreadySent(env.DB, rsvpId, 'reminder')) return
+async function handleReminder(
+  rsvpId: string,
+  eventId: string,
+  env: Env,
+  baseUrl: string,
+): Promise<void> {
+  // Dedupe key includes today's date (C-11): without it, notification_log's
+  // UNIQUE(rsvp_id, notification_type) means an RSVP could never receive a
+  // second reminder even if the event were postponed and re-scheduled.
+  const todayKey = `reminder:${new Date().toISOString().slice(0, 10)}`
+  if (await idempotencyAlreadySent(env.DB, rsvpId, todayKey)) return
 
   const rsvp = await fetchRsvp(env.DB, rsvpId)
   if (!rsvp?.email) return // no email, skip
@@ -167,8 +204,17 @@ async function handleReminder(rsvpId: string, eventId: string, env: Env): Promis
   const event = await fetchEvent(env.DB, eventId)
   if (!event) return
 
-  const editLink = `${BASE_URL}/rsvp/${event.slug}?rid=${rsvp.rsvp_token}`
-  const dateStr = event.start_at ? new Date(event.start_at).toUTCString() : 'soon'
+  const editLink = `${baseUrl}/rsvp/${event.slug}?rid=${rsvp.rsvp_token}`
+  // start_at is stored as true UTC (C-5 in recommendations.md); format in the
+  // event's own timezone so the guest sees the time the host actually meant,
+  // not a UTC instant with no offset context (toUTCString() previously).
+  const dateStr = event.start_at
+    ? new Date(event.start_at).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: event.timezone,
+      })
+    : 'soon'
   const html = `
 <p>Hi ${escHtml(rsvp.name)},</p>
 <p>This is a reminder that <strong>${escHtml(event.title)}</strong> is coming up on ${dateStr}.</p>
@@ -184,7 +230,7 @@ async function handleReminder(rsvpId: string, eventId: string, env: Env): Promis
     text,
   }
   await sendEmail(payload, env)
-  await markNotificationSent(env.DB, rsvpId, 'reminder')
+  await markNotificationSent(env.DB, rsvpId, todayKey)
 }
 
 // ── External API helpers ─────────────────────────────────────────────────────

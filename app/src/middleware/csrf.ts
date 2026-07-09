@@ -16,6 +16,7 @@
  */
 import { createMiddleware } from 'hono/factory'
 import { getCookie, setCookie } from 'hono/cookie'
+import { timingSafeEqual } from '../domain/tokens'
 
 /** Admin paths exempt from CSRF (pre-auth or logout). */
 const EXEMPT_PATHS = new Set([
@@ -38,40 +39,49 @@ function isAdminMutating(method: string, path: string): boolean {
 }
 
 export function csrfProtection() {
-  return createMiddleware<{ Bindings: Env }>(async (c, next) => {
+  return createMiddleware<{ Bindings: Env; Variables: { csrfToken?: string } }>(async (c, next) => {
     const method = c.req.method
     const path = c.req.path
 
+    // For every non-exempt admin path, ensure a CSRF token cookie exists *before*
+    // calling next() so route handlers can read it via c.get('csrfToken') and embed
+    // it into the forms they render — this is what P0-2 in recommendations.md fixed:
+    // the token was previously only ever set AFTER the handler ran, so no form could
+    // ever see it, and no admin POST could ever pass the check below.
+    if (path.startsWith('/rsvp/admin') && !isExempt(path)) {
+      let token = getCookie(c, 'csrf_token')
+      if (!token) {
+        token = crypto.randomUUID()
+        setCookie(c, 'csrf_token', token, {
+          httpOnly: false, // JS needs to read it to set the header
+          sameSite: 'Strict',
+          secure: true,
+          path: '/',
+          maxAge: 60 * 60 * 24, // 24 hours
+        })
+      }
+      c.set('csrfToken', token)
+    }
+
     // Only protect admin mutating routes
     if (!isAdminMutating(method, path)) {
-      // On GET to admin pages, ensure a CSRF token cookie is set
-      if ((method === 'GET' || method === 'HEAD') && path.startsWith('/rsvp/admin')) {
-        await next()
-        // Set csrf_token cookie if not already present
-        const existing = getCookie(c, 'csrf_token')
-        if (!existing) {
-          setCookie(c, 'csrf_token', crypto.randomUUID(), {
-            httpOnly: false, // JS needs to read it to set the header
-            sameSite: 'Strict',
-            secure: true,
-            path: '/',
-            maxAge: 60 * 60 * 24, // 24 hours
-          })
-        }
-        return
-      }
       await next()
       return
     }
 
     // ── Origin header check ───────────────────────────────────────────
+    // Fail closed: if the browser sent an Origin header (every modern browser
+    // does, for same-origin POSTs too) but DEPLOYMENT_DOMAIN isn't configured,
+    // we cannot validate it — reject rather than silently skip the check.
+    // See S-8 in recommendations.md: the previous `if (origin && deployDomain)`
+    // meant this check was a no-op on any deploy that forgot to set the var.
     const origin = c.req.raw.headers.get('Origin')
-    const deployDomain = (c.env as unknown as Record<string, unknown>).DEPLOYMENT_DOMAIN as
-      | string
-      | undefined
+    const deployDomain = c.env.DEPLOYMENT_DOMAIN
 
-    if (origin && deployDomain) {
-      // Compare origin against deployment domain
+    if (origin) {
+      if (!deployDomain) {
+        return c.json({ error: 'origin_validation_unavailable' }, 403)
+      }
       const allowed = [deployDomain]
       // In dev, also allow localhost variants
       if (!deployDomain.includes('localhost')) {
@@ -111,7 +121,7 @@ export function csrfProtection() {
       return c.json({ error: 'csrf_token_missing' }, 403)
     }
 
-    if (cookieToken !== headerToken) {
+    if (!timingSafeEqual(cookieToken, headerToken)) {
       return c.json({ error: 'csrf_token_mismatch' }, 403)
     }
 

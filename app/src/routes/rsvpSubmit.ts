@@ -23,13 +23,21 @@ import { turnstileVerify } from '../middleware/turnstile'
 import { rsvpRateLimit } from '../middleware/rateLimit'
 import { checkAndInsertRsvp } from '../domain/capacity'
 import { isDuplicate, isHeuristicDuplicate } from '../domain/duplicates'
-import { generateToken, generateIpHash } from '../domain/tokens'
+import { generateToken, generateIpHash, timingSafeEqual } from '../domain/tokens'
 import { currentThreshold } from '../domain/notifications'
 import { withSpan } from '../domain/tracing'
 import { t, resolveLocale, type SupportedLocale } from '../i18n'
+import { parseQuestionDefs, questionFieldName } from '../domain/questions'
 import type { NotificationMessage } from '../handlers/queue'
 
 // ── Zod schema for RSVP form submission ───────────────────────────────────────
+//
+// NOTE: dietary_kind[]/dietary_value[] keep the `[]` suffix in the
+// schema keys because Hono's parseBody() does NOT strip it — it uses the raw
+// form-field name as the object key (see hono/dist/utils/body.js:
+// convertFormDataToBodyData). A field rendered as name="dietary_kind[]" must
+// be read back as body['dietary_kind[]'], never body.dietary_kind. This was
+// P0-3 in recommendations.md — dietary data was silently dropped.
 
 const rsvpBodySchema = z.object({
   name: z.string().min(1).max(200),
@@ -41,8 +49,8 @@ const rsvpBodySchema = z.object({
   siblings_count: z.coerce.number().int().min(0).max(50).optional().default(0),
   children_count: z.coerce.number().int().min(0).max(50).optional().default(0),
   children_ages: z.string().max(200).optional().default(''),
-  dietary_kind: z.union([z.string(), z.array(z.string())]).optional(),
-  dietary_value: z.union([z.string(), z.array(z.string())]).optional(),
+  'dietary_kind[]': z.union([z.string(), z.array(z.string())]).optional(),
+  'dietary_value[]': z.union([z.string(), z.array(z.string())]).optional(),
   notes: z.string().max(2000).optional().nullable(),
   client_submitted_at: z.string().optional().nullable(),
   t: z.string().optional().nullable(), // access token passthrough
@@ -108,7 +116,7 @@ rsvpSubmitRouter.post('/:slug', turnstileVerify(), rsvpRateLimit(), async (c) =>
   // ── Visibility check ───────────────────────────────────────────────────
   if (event.visibility === 'private') {
     const t = body.t
-    if (!t || t !== event.access_token) {
+    if (!t || !event.access_token || !timingSafeEqual(t, event.access_token)) {
       return c.json({ error: 'access_denied' }, 403)
     }
     if (event.access_token_expires_at && event.access_token_expires_at < now) {
@@ -157,15 +165,17 @@ rsvpSubmitRouter.post('/:slug', turnstileVerify(), rsvpRateLimit(), async (c) =>
   }
 
   // ── PUB-05: dietary max 10 entries ─────────────────────────────────────
-  const dietaryKinds = Array.isArray(body.dietary_kind)
-    ? body.dietary_kind
-    : body.dietary_kind
-      ? [body.dietary_kind]
+  const dietaryKindRaw = body['dietary_kind[]']
+  const dietaryValueRaw = body['dietary_value[]']
+  const dietaryKinds = Array.isArray(dietaryKindRaw)
+    ? dietaryKindRaw
+    : dietaryKindRaw
+      ? [dietaryKindRaw]
       : []
-  const dietaryValues = Array.isArray(body.dietary_value)
-    ? body.dietary_value
-    : body.dietary_value
-      ? [body.dietary_value]
+  const dietaryValues = Array.isArray(dietaryValueRaw)
+    ? dietaryValueRaw
+    : dietaryValueRaw
+      ? [dietaryValueRaw]
       : []
 
   if (dietaryKinds.length > 10) {
@@ -181,19 +191,13 @@ rsvpSubmitRouter.post('/:slug', turnstileVerify(), rsvpRateLimit(), async (c) =>
   const dietaryJson = JSON.stringify(dietary)
 
   // ── GUEST-04: custom question answers ─────────────────────────────────
-  const questionDefs: Array<{
-    id: string
-    type: 'short_text' | 'long_text' | 'boolean' | 'single_select' | 'multi_select'
-    label: string
-    required?: boolean
-    options?: string[]
-  }> = JSON.parse(event.questions || '[]')
+  const questionDefs = parseQuestionDefs(event.questions)
 
   const answers: Record<string, string | string[]> = {}
   const answerErrors: string[] = []
 
   for (const q of questionDefs) {
-    const fieldName = `answer_${q.id}`
+    const fieldName = questionFieldName(q)
     const rawValues = rawBody[fieldName]
 
     let value: string | string[] | undefined
@@ -278,40 +282,62 @@ rsvpSubmitRouter.post('/:slug', turnstileVerify(), rsvpRateLimit(), async (c) =>
     : 'attending'
 
   // ── IP hashing ────────────────────────────────────────────────────────
-  const rawIp =
-    c.req.raw.headers.get('CF-Connecting-IP') ?? c.req.raw.headers.get('X-Forwarded-For') ?? null
-  const ipHash = rawIp ? await generateIpHash(rawIp) : null
+  // Only CF-Connecting-IP (S-4 in recommendations.md): X-Forwarded-For is
+  // client-spoofable on any request that reaches the Worker directly, which
+  // would let a guest poison the stored ip_hash used for abuse analysis.
+  const rawIp = c.req.raw.headers.get('CF-Connecting-IP') ?? null
+  const ipHash = rawIp ? await generateIpHash(rawIp, c.env.IP_HASH_KEY) : null
   const userAgent = c.req.raw.headers.get('User-Agent') ?? null
 
   // ── Atomic capacity check + insert ────────────────────────────────────
   const rsvpId = crypto.randomUUID()
   const rsvpToken = generateToken()
 
-  const result = await checkAndInsertRsvp(
-    c.env.DB,
-    event.id,
-    {
-      id: rsvpId,
-      eventId: event.id,
-      name: body.name,
-      email,
-      phone,
-      adults: body.adults,
-      parentsCount: body.parents_count,
-      siblingsCount: body.siblings_count,
-      childrenCount: body.children_count,
-      childrenAges: childrenAgesJson,
-      dietary: dietaryJson,
-      notes: body.notes ?? null,
-      answers: answersJson,
-      status: rsvpStatus,
-      rsvpToken,
-      ipHash,
-      userAgent,
-      clientSubmittedAt: body.client_submitted_at ?? null,
-    },
-    reqId,
-  )
+  let result: Awaited<ReturnType<typeof checkAndInsertRsvp>>
+  try {
+    result = await checkAndInsertRsvp(
+      c.env.DB,
+      event.id,
+      {
+        id: rsvpId,
+        eventId: event.id,
+        name: body.name,
+        email,
+        phone,
+        adults: body.adults,
+        parentsCount: body.parents_count,
+        siblingsCount: body.siblings_count,
+        childrenCount: body.children_count,
+        childrenAges: childrenAgesJson,
+        dietary: dietaryJson,
+        notes: body.notes ?? null,
+        answers: answersJson,
+        status: rsvpStatus,
+        rsvpToken,
+        ipHash,
+        userAgent,
+        clientSubmittedAt: body.client_submitted_at ?? null,
+      },
+      reqId,
+    )
+  } catch (err) {
+    // Concurrent duplicate submit (C-4 in recommendations.md): the isDuplicate()
+    // check above is check-then-insert, so two requests with the same email/phone
+    // can both pass it and race to insert. The loser hits the partial unique index
+    // (uidx_rsvps_event_email / uidx_rsvps_event_phone) and D1 throws. Convert that
+    // into the same friendly 409 the pre-check path returns, instead of a bare 500.
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.includes('UNIQUE constraint failed')) {
+      const dup = await isDuplicate(c.env.DB, event.id, email, phone, reqId)
+      if (dup.isDuplicate) {
+        return c.json(
+          { error: 'already_rsvped', action: 'resend_edit_link', rsvpToken: dup.rsvpToken },
+          409,
+        )
+      }
+    }
+    throw err
+  }
 
   // ── Capacity full ──────────────────────────────────────────────────────
   if (!result.success) {

@@ -15,7 +15,9 @@ import {
   consumeResetToken,
   hashPassword,
   clearLockout,
+  deleteAllSessionsForUser,
 } from '../domain/adminAuth'
+import { adminAuthRateLimit } from '../middleware/rateLimit'
 
 const adminPasswordResetRouter = new Hono<{ Bindings: Env }>()
 
@@ -45,7 +47,7 @@ adminPasswordResetRouter.get('/password-reset', (c) => {
   )
 })
 
-adminPasswordResetRouter.post('/password-reset', async (c) => {
+adminPasswordResetRouter.post('/password-reset', adminAuthRateLimit(), async (c) => {
   const body = await c.req.parseBody()
   const parsed = requestSchema.safeParse(body)
   if (!parsed.success) {
@@ -63,7 +65,11 @@ adminPasswordResetRouter.post('/password-reset', async (c) => {
   // Always show success (don't reveal whether email exists)
   if (user) {
     const rawToken = await createResetToken(c.env.DB, user.id, RESET_EXPIRY_MINUTES)
-    const resetUrl = `${new URL(c.req.url).origin}/rsvp/admin/password-reset/confirm?token=${rawToken}`
+    // Use the configured deployment domain, not the request's Host header (C-10):
+    // building the link from the request would let an attacker who can make the
+    // Worker answer on an arbitrary hostname poison the reset link.
+    const baseUrl = c.env.DEPLOYMENT_DOMAIN ?? new URL(c.req.url).origin
+    const resetUrl = `${baseUrl}/rsvp/admin/password-reset/confirm?token=${rawToken}`
     await sendResetEmail(c.env, email, resetUrl)
   }
 
@@ -97,7 +103,7 @@ adminPasswordResetRouter.get('/password-reset/confirm', (c) => {
   )
 })
 
-adminPasswordResetRouter.post('/password-reset/confirm', async (c) => {
+adminPasswordResetRouter.post('/password-reset/confirm', adminAuthRateLimit(), async (c) => {
   const body = await c.req.parseBody()
   const parsed = confirmSchema.safeParse(body)
   if (!parsed.success) {
@@ -111,13 +117,18 @@ adminPasswordResetRouter.post('/password-reset/confirm', async (c) => {
     return c.json({ error: 'token_expired_or_invalid' }, 410)
   }
 
-  const newHash = await hashPassword(password)
+  const newHash = await hashPassword(password, c.env.ARGON2_PEPPER)
   await c.env.DB.prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?')
     .bind(newHash, result.adminUserId)
     .run()
 
   // Clear lockout state on password reset
   await clearLockout(c.env.DB, result.adminUserId)
+
+  // @req SEC-03 — a password reset means "assume the old password was compromised";
+  // kill every existing session so a resumed attacker session doesn't survive it
+  // (S-6 in recommendations.md).
+  await deleteAllSessionsForUser(c.env.DB, result.adminUserId)
 
   return c.redirect('/rsvp/admin/login?reset=success', 303)
 })

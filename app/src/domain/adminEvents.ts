@@ -4,6 +4,8 @@
  * @req ADMIN-04 — Event CRUD: create, edit, publish, archive
  */
 
+import { sanitizeDescriptionHtml } from './sanitize'
+
 export type EventInput = {
   title: string
   slug?: string // if not provided, auto-generated
@@ -142,7 +144,7 @@ export async function createEvent(db: D1Database, input: EventInput): Promise<st
       slug,
       input.title,
       input.hostName ?? null,
-      input.descriptionHtml ?? null,
+      input.descriptionHtml ? sanitizeDescriptionHtml(input.descriptionHtml) : null,
       input.timezone,
       input.startAt,
       input.endAt ?? null,
@@ -219,7 +221,11 @@ export async function updateEvent(
   }
   if (input.descriptionHtml !== undefined) {
     sets.push('description_html = ?')
-    binds.push(input.descriptionHtml)
+    binds.push(
+      input.descriptionHtml
+        ? sanitizeDescriptionHtml(input.descriptionHtml)
+        : input.descriptionHtml,
+    )
   }
   if (input.timezone !== undefined) {
     sets.push('timezone = ?')

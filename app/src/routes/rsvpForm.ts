@@ -15,7 +15,9 @@
 
 import { Hono } from 'hono'
 import { getRsvpByToken } from '../domain/rsvpEdit'
+import { timingSafeEqual } from '../domain/tokens'
 import { t, resolveLocale, type SupportedLocale } from '../i18n'
+import { parseQuestionDefs, questionFieldName, type QuestionDef } from '../domain/questions'
 
 const rsvpFormRouter = new Hono<{ Bindings: Env }>()
 
@@ -39,7 +41,9 @@ type EventRow = {
   max_party_size_per_rsvp: number
   locale: string
   start_at: string
+  timezone: string
   location_text: string | null
+  questions: string
 }
 
 type RsvpEditRow = {
@@ -52,6 +56,7 @@ type RsvpEditRow = {
   parents_count: number
   siblings_count: number
   children_count: number
+  children_ages: string
   dietary: string
   notes: string | null
   answers: string
@@ -68,7 +73,7 @@ rsvpFormRouter.get('/:slug', async (c) => {
             access_token, access_token_expires_at, opens_at, closes_at,
             status, is_kids_event, allow_children, allow_siblings,
             allow_parents, allow_status_choice, max_party_size_per_rsvp,
-            locale, start_at, location_text
+            locale, start_at, timezone, location_text, questions
        FROM events
       WHERE slug = ?
         AND status = 'published'
@@ -86,7 +91,7 @@ rsvpFormRouter.get('/:slug', async (c) => {
 
   // ── Visibility check ──────────────────────────────────────────────────────
   if (event.visibility === 'private') {
-    if (!accessToken || accessToken !== event.access_token) {
+    if (!accessToken || !event.access_token || !timingSafeEqual(accessToken, event.access_token)) {
       return c.html(renderAccessDenied(event.title, locale), 403)
     }
     // GAP-06: expired token
@@ -116,7 +121,7 @@ rsvpFormRouter.get('/:slug', async (c) => {
   }
 
   // ── New RSVP: render blank form ───────────────────────────────────────────
-  return c.html(renderForm(event, accessToken, locale))
+  return c.html(renderForm(event, accessToken, locale, c.env.TURNSTILE_SITE_KEY))
 })
 
 // ── HTML renderers ────────────────────────────────────────────────────────────
@@ -137,7 +142,9 @@ function renderEditForm(
   locale: SupportedLocale,
 ): string {
   const dietary: Array<{ kind: string; value: string }> = JSON.parse(rsvp.dietary || '[]')
-  const firstDietary = dietary[0] ?? null
+  const questionDefs = parseQuestionDefs(event.questions)
+  const currentAnswers: Record<string, unknown> = JSON.parse(rsvp.answers || '{}')
+  const isKids = Boolean(event.is_kids_event)
 
   return page(
     event.title,
@@ -166,9 +173,17 @@ function renderEditForm(
 
       <fieldset>
         <legend>${escHtml(t('legend.party', locale))}</legend>
-        <label for="adults">${escHtml(t('form.adults', locale))} *</label>
-        <input id="adults" name="adults" type="number" min="0" max="${event.max_party_size_per_rsvp}"
-               value="${rsvp.adults}" required>
+        ${
+          isKids
+            ? renderKidsPartyFields(event, locale, {
+                childrenCount: rsvp.children_count,
+                childrenAges: (JSON.parse(rsvp.children_ages || '[]') as number[]).join(','),
+                siblingsCount: rsvp.siblings_count,
+                adults: rsvp.adults,
+                parentsCount: rsvp.parents_count,
+              })
+            : renderStandardPartyFields(event, event.max_party_size_per_rsvp, locale, rsvp.adults)
+        }
       </fieldset>
 
       ${
@@ -186,15 +201,13 @@ function renderEditForm(
 
       <fieldset>
         <legend>${escHtml(t('legend.dietary', locale))}</legend>
-        <div class="dietary-row">
-          <select name="dietary_kind[]">
-            <option value="">${escHtml(t('dietary.select', locale))}</option>
-            ${renderDietaryOptions(locale, firstDietary?.kind)}
-          </select>
-          <input type="text" name="dietary_value[]" placeholder="${escHtml(t('dietary.detailsPlaceholder', locale))}"
-                 value="${escHtml(firstDietary?.value ?? '')}">
+        <p>${escHtml(t('legend.dietaryHint', locale))}</p>
+        <div id="dietary-container">
+          ${renderDietaryRows(locale, dietary)}
         </div>
       </fieldset>
+
+      ${renderQuestionFields(questionDefs, locale, currentAnswers)}
 
       <fieldset>
         <legend>${escHtml(t('legend.notes', locale))}</legend>
@@ -240,8 +253,14 @@ function renderLinkExpired(title: string, locale: SupportedLocale): string {
 }
 
 function renderNotOpenYet(event: EventRow, locale: SupportedLocale): string {
+  // opens_at is stored as true UTC (C-5 in recommendations.md) — an explicit
+  // timeZone is required, otherwise this formats in the Workers runtime's
+  // own zone (UTC) instead of the event's.
   const opensDate = event.opens_at
-    ? new Date(event.opens_at).toLocaleDateString(locale, { dateStyle: 'long' })
+    ? new Date(event.opens_at).toLocaleDateString(locale, {
+        dateStyle: 'long',
+        timeZone: event.timezone,
+      })
     : ''
   return page(
     event.title,
@@ -265,10 +284,16 @@ function renderClosed(title: string, locale: SupportedLocale): string {
   )
 }
 
-function renderForm(event: EventRow, accessToken: string | null, locale: SupportedLocale): string {
+function renderForm(
+  event: EventRow,
+  accessToken: string | null,
+  locale: SupportedLocale,
+  turnstileSiteKey: string,
+): string {
   const isKids = Boolean(event.is_kids_event)
   const allowStatusChoice = Boolean(event.allow_status_choice)
   const maxParty = event.max_party_size_per_rsvp
+  const questionDefs = parseQuestionDefs(event.questions)
 
   return page(
     event.title,
@@ -306,15 +331,11 @@ function renderForm(event: EventRow, accessToken: string | null, locale: Support
         <legend>${escHtml(t('legend.dietary', locale))}</legend>
         <p>${escHtml(t('legend.dietaryHint', locale))}</p>
         <div id="dietary-container">
-          <div class="dietary-row">
-            <select name="dietary_kind[]">
-              <option value="">${escHtml(t('dietary.select', locale))}</option>
-              ${renderDietaryOptions(locale)}
-            </select>
-            <input type="text" name="dietary_value[]" placeholder="${escHtml(t('dietary.detailsPlaceholder', locale))}" maxlength="200">
-          </div>
+          ${renderDietaryRows(locale, [])}
         </div>
       </fieldset>
+
+      ${renderQuestionFields(questionDefs, locale)}
 
       <fieldset>
         <legend>${escHtml(t('legend.notes', locale))}</legend>
@@ -323,7 +344,7 @@ function renderForm(event: EventRow, accessToken: string | null, locale: Support
       </fieldset>
 
       <!-- Cloudflare Turnstile widget -->
-      <div class="cf-turnstile" data-sitekey="TURNSTILE_SITE_KEY_PLACEHOLDER"></div>
+      <div class="cf-turnstile" data-sitekey="${escHtml(turnstileSiteKey)}"></div>
 
       <button type="submit">${escHtml(t('form.submit', locale))}</button>
     </form>
@@ -334,21 +355,33 @@ function renderForm(event: EventRow, accessToken: string | null, locale: Support
   )
 }
 
-function renderKidsPartyFields(event: EventRow, locale: SupportedLocale): string {
+type PartyFieldValues = {
+  childrenCount?: number
+  childrenAges?: string
+  siblingsCount?: number
+  adults?: number
+  parentsCount?: number
+}
+
+function renderKidsPartyFields(
+  event: EventRow,
+  locale: SupportedLocale,
+  current?: PartyFieldValues,
+): string {
   const allowSiblings = Boolean(event.allow_siblings)
   const allowParents = Boolean(event.allow_parents)
   return `
     <label for="children_count">${escHtml(t('form.childrenCount', locale))} *</label>
-    <input id="children_count" name="children_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" required>
+    <input id="children_count" name="children_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="${current?.childrenCount ?? ''}" required>
 
     <label for="children_ages">${escHtml(t('form.childrenAges', locale))}</label>
-    <input id="children_ages" name="children_ages" type="text" maxlength="100" placeholder="3,5,7">
+    <input id="children_ages" name="children_ages" type="text" maxlength="100" placeholder="3,5,7" value="${escHtml(current?.childrenAges ?? '')}">
 
     ${
       allowSiblings
         ? `
       <label for="siblings_count">${escHtml(t('form.siblings', locale))}</label>
-      <input id="siblings_count" name="siblings_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="0">
+      <input id="siblings_count" name="siblings_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="${current?.siblingsCount ?? 0}">
     `
         : ''
     }
@@ -357,10 +390,10 @@ function renderKidsPartyFields(event: EventRow, locale: SupportedLocale): string
       allowParents
         ? `
       <label for="adults">${escHtml(t('form.adultsKids', locale))}</label>
-      <input id="adults" name="adults" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="1">
+      <input id="adults" name="adults" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="${current?.adults ?? 1}">
 
       <label for="parents_count">${escHtml(t('form.parents', locale))}</label>
-      <input id="parents_count" name="parents_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="0">
+      <input id="parents_count" name="parents_count" type="number" min="0" max="${event.max_party_size_per_rsvp}" value="${current?.parentsCount ?? 0}">
     `
         : ''
     }
@@ -371,10 +404,11 @@ function renderStandardPartyFields(
   event: EventRow,
   maxParty: number,
   locale: SupportedLocale,
+  currentAdults?: number,
 ): string {
   return `
     <label for="adults">${escHtml(t('form.adults', locale))} *</label>
-    <input id="adults" name="adults" type="number" min="1" max="${maxParty}" value="1" required>
+    <input id="adults" name="adults" type="number" min="1" max="${maxParty}" value="${currentAdults ?? 1}" required>
   `
 }
 
@@ -416,6 +450,102 @@ function renderDietaryOptions(locale: SupportedLocale, selectedKind?: string): s
     (key, i) =>
       `<option value="${DIETARY_VALUES[i]}" ${selectedKind === DIETARY_VALUES[i] ? 'selected' : ''}>${escHtml(t(`dietary.${key}`, locale))}</option>`,
   ).join('')
+}
+
+/**
+ * Renders one `.dietary-row` per existing entry, plus a trailing blank row.
+ * Used by both the new-RSVP form (entries=[]) and the edit form (C-3 in
+ * recommendations.md: the edit form previously rendered only ONE dietary row
+ * regardless of how many entries the guest originally submitted, so editing
+ * silently dropped every entry past the first).
+ */
+function renderDietaryRow(
+  locale: SupportedLocale,
+  entry?: { kind: string; value: string },
+): string {
+  return `
+          <div class="dietary-row">
+            <select name="dietary_kind[]">
+              <option value="">${escHtml(t('dietary.select', locale))}</option>
+              ${renderDietaryOptions(locale, entry?.kind)}
+            </select>
+            <input type="text" name="dietary_value[]" placeholder="${escHtml(t('dietary.detailsPlaceholder', locale))}" maxlength="200" value="${escHtml(entry?.value ?? '')}">
+          </div>`
+}
+
+function renderDietaryRows(
+  locale: SupportedLocale,
+  entries: Array<{ kind: string; value: string }>,
+): string {
+  const rows = entries.map((entry) => renderDietaryRow(locale, entry))
+  rows.push(renderDietaryRow(locale)) // always one trailing blank row to add more
+  return rows.join('')
+}
+
+// ── Custom questions (GUEST-04) ─────────────────────────────────────────────
+// @req GUEST-04 — custom questions per event, rendered here and parsed by
+// rsvpSubmit.ts / rsvpPatch.ts using the shared questionFieldName() convention.
+
+function renderQuestionFields(
+  questions: QuestionDef[],
+  locale: SupportedLocale,
+  currentAnswers?: Record<string, unknown>,
+): string {
+  if (questions.length === 0) return ''
+  return `
+      <fieldset>
+        <legend>${escHtml(t('legend.additionalQuestions', locale))}</legend>
+        ${questions.map((q) => renderQuestionField(q, currentAnswers?.[q.id])).join('')}
+      </fieldset>
+  `
+}
+
+function renderQuestionField(q: QuestionDef, currentValue?: unknown): string {
+  const fieldName = questionFieldName(q)
+  const fieldId = `answer_${escHtml(q.id)}`
+  const label = `${escHtml(q.label)}${q.required ? ' *' : ''}`
+  const requiredAttr = q.required ? 'required' : ''
+  const currentStr = typeof currentValue === 'string' ? currentValue : ''
+  const currentArr = Array.isArray(currentValue) ? currentValue.map(String) : []
+
+  switch (q.type) {
+    case 'short_text':
+      return `
+        <label for="${fieldId}">${label}</label>
+        <input id="${fieldId}" name="${fieldName}" type="text" maxlength="500" value="${escHtml(currentStr)}" ${requiredAttr}>`
+    case 'long_text':
+      return `
+        <label for="${fieldId}">${label}</label>
+        <textarea id="${fieldId}" name="${fieldName}" rows="3" maxlength="2000" ${requiredAttr}>${escHtml(currentStr)}</textarea>`
+    case 'boolean':
+      return `
+        <label for="${fieldId}">${label}</label>
+        <select id="${fieldId}" name="${fieldName}" ${requiredAttr}>
+          <option value="">—</option>
+          <option value="yes" ${currentStr === 'yes' ? 'selected' : ''}>Yes</option>
+          <option value="no" ${currentStr === 'no' ? 'selected' : ''}>No</option>
+        </select>`
+    case 'single_select':
+      return `
+        <label for="${fieldId}">${label}</label>
+        <select id="${fieldId}" name="${fieldName}" ${requiredAttr}>
+          <option value="">—</option>
+          ${(q.options ?? []).map((opt) => `<option value="${escHtml(opt)}" ${currentStr === opt ? 'selected' : ''}>${escHtml(opt)}</option>`).join('')}
+        </select>`
+    case 'multi_select':
+      return `
+        <fieldset>
+          <legend>${label}</legend>
+          ${(q.options ?? [])
+            .map(
+              (opt, i) =>
+                `<label><input type="checkbox" id="${i === 0 ? fieldId : ''}" name="${fieldName}" value="${escHtml(opt)}" ${currentArr.includes(opt) ? 'checked' : ''}> ${escHtml(opt)}</label>`,
+            )
+            .join('')}
+        </fieldset>`
+    default:
+      return ''
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

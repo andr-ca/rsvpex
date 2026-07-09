@@ -7,7 +7,7 @@
 import { env } from 'cloudflare:test'
 import { describe, it, expect } from 'vitest'
 import app from '../../src/app'
-import { hashPassword, createSession } from '../../src/domain/adminAuth'
+import { hashPassword, createSession, hashToken } from '../../src/domain/adminAuth'
 import { createEvent } from '../../src/domain/adminEvents'
 
 const baseEvent = {
@@ -41,11 +41,12 @@ async function seedAdminSession(
     .run()
   const sessionId = await createSession(db, id, 7)
   if (!fresh) {
-    // Make session appear old (20 minutes ago) to fail the 15-minute freshness gate
+    // Make session appear old (20 minutes ago) to fail the 15-minute freshness gate.
+    // Sessions are stored as SHA-256(token), not the raw cookie value (S-15).
     const oldTime = new Date(Date.now() - 20 * 60 * 1000).toISOString()
     await db
       .prepare('UPDATE sessions SET created_at = ? WHERE id = ?')
-      .bind(oldTime, sessionId)
+      .bind(oldTime, await hashToken(sessionId))
       .run()
   }
   return { cookie: `session_id=${sessionId}`, sessionId }

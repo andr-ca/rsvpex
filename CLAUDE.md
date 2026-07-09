@@ -22,92 +22,85 @@ The project has two layers: a **static marketing site** (landing page, already l
 <!-- GSD:stack-start source:research/STACK.md -->
 ## Technology Stack
 
-## Recommended Stack
+**Note (H-4 in recommendations.md, refreshed 2026-07-09):** this table now
+reflects what's actually in `app/package.json` and running in the codebase,
+not the pre-implementation research proposal. Several original proposals
+(React Router v7, pino, i18next, Cloudflare Access/KV sessions) were never
+adopted — the app shipped with simpler choices that turned out sufficient.
+See `.planning/PROJECT.md` Context/Key Decisions for the "why."
+
+## Actual Stack
 ### Runtime & Deployment
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
 | Cloudflare Workers | runtime | API + SSR host | Globally distributed, 0 cold starts on paid plan, native D1/KV/Queues bindings |
-| Cloudflare Pages | — | Static asset serving + Worker routing | Unified deploy with Workers via `_worker.js` or Vite plugin |
-| Wrangler CLI | `4.76.0` | Deploy, dev server, migrations | Only official tool; `wrangler.jsonc` preferred over `.toml` for new projects |
-| Cloudflare Vite Plugin | `1.x` | Build pipeline for SSR/SPA frameworks | Replaces raw `wrangler dev` build for framework-based apps; React Router v7 requires it |
+| Cloudflare Pages | — | Static marketing site hosting (separate from the Workers app) | Direct-upload deploy via `wrangler pages deploy`, no build step |
+| Wrangler CLI | `4.76.0` | Deploy, dev server, migrations | Only official tool; `wrangler.jsonc` (not `.toml`) |
 ### Core Framework
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| React Router v7 | `7.13.1` | Full-stack SSR framework on Workers | Officially documented by Cloudflare; loaders/actions run in Workers runtime; bindings via `context.cloudflare.env`; scaffolded via `npm create cloudflare@latest -- my-app --framework=react-router` |
-| Hono | `4.12.8` | API layer / middleware | Lightweight (14 KB), zero-dep, first-class Workers support; handles routing, validation middleware, CORS, CSP headers cleanly |
-| `@hono/zod-validator` | `0.7.6` | Request validation middleware | Integrates Zod v4 with Hono; works on both v3 and v4 |
+| Hono | `4.12.28` | Routing + middleware for the entire app (API and admin HTML) | Lightweight, zero-dep, first-class Workers support; handles routing, CSP/CSRF middleware, rate limiting |
+| — (no client framework) | — | Admin dashboard is server-rendered HTML | `src/views/layout.ts` page shell + per-route template functions; no React/RR7 — avoids a build step and hydration cost for a low-interactivity CRUD UI; a small vanilla `admin.js` (served from `src/routes/adminAssets.ts`) covers the little client-side behavior needed (confirm dialogs, Chart.js bootstrap) under a strict CSP |
+| Zod | `4.3.6` | Runtime validation | Manual `.safeParse()` calls in route handlers, not a Hono validator middleware (`@hono/zod-validator` was declared but never used — removed, D-6) |
 ### Database & ORM
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| Cloudflare D1 | — | Primary datastore | SQLite dialect, 10 GB max, Workers-native binding, EU region configurable for GDPR |
-| Drizzle ORM | `1.0.0-beta.2` | Type-safe query builder + schema | Best D1 support in the ecosystem; generates SQLite-compatible migration SQL; `drizzle-kit` handles migration diffing |
-| `drizzle-kit` | `0.31.10` | Migration generation + push | `drizzle-kit generate` → SQL files; `wrangler d1 migrations apply` runs them; fully compatible workflow |
+| Cloudflare D1 | — | Primary datastore | SQLite dialect, Workers-native binding |
+| `drizzle-orm` / `drizzle-kit` | `0.45.1` / `0.31.10` | Schema definition (`src/db/schema.ts`) + migration diffing only | Every actual query is raw `db.prepare()` SQL (A-1 in recommendations.md) — Drizzle is a devDependency here, not a runtime query layer; `drizzle-kit generate` produces the SQL files in `migrations/`, applied via `wrangler d1 migrations apply` |
 ### Authentication & Sessions
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| Cloudflare Access | — | Admin route guard (`/rsvp/admin/*`) | Zero-trust IdP proxy; handles SSO, enforces before Worker runs; no session code needed at this layer |
-| Cloudflare KV | — | App-level session storage | Globally replicated; eventual consistency is acceptable for session reads; `SameSite=Lax; HttpOnly` cookies store session ID |
-| `@noble/hashes` | `2.0.1` | argon2id password hashing | Pure-JS (no WASM, no threads — Workers don't support either); includes `argon2.js` export; confirmed Workers-compatible |
-### Validation & Schema
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| Zod | `4.3.6` | Runtime validation + TypeScript inference | v4 is current; `@hono/zod-validator` 0.7.6 supports it; use for API request bodies, env config, and domain types |
+| D1 `sessions` table | — | Admin session storage | Not Cloudflare Access (no external IdP dependency for a single-admin-per-event tool) and not KV (eventual consistency is wrong for auth state); session tokens are SHA-256-hashed before storage (S-15) so a DB read-leak alone doesn't grant a working session |
+| `@noble/hashes` | `2.0.1` | argon2id password hashing + HMAC (IP hashing) | Pure-JS (no WASM/threads — Workers doesn't support either); OWASP-minimum params plus a server-side pepper (S-11) |
 ### Async Jobs & Notifications
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| Cloudflare Queues | — | Async notification dispatch | Workers-native; push-based consumer (Worker); DLQ via `dead_letter_queue` field; exponential backoff via `msg.retry({ delaySeconds })` |
-| Cloudflare Cron Triggers | — | Scheduled jobs (reminders, purge) | `[triggers] crons = ["0 9 * * *"]` in wrangler.jsonc; handles NOTIF-04 reminder emails and SEC-04 audit log purge |
-| Resend | HTTP API | Transactional email | Clean HTTP API, Workers-compatible (no SMTP), 3 000 free emails/month; `fetch()` only |
-| Twilio | HTTP API | SMS (per-event toggle) | REST API, Workers-compatible; only used when per-event SMS enabled (NOTIF-05) |
+| Cloudflare Queues | — | Async notification dispatch | Push-based consumer; DLQ via `dead_letter_queue`; idempotency via a `notification_log` table (`UNIQUE(rsvp_id, notification_type)`) |
+| Cloudflare Cron Triggers | — | Daily job at 06:00 UTC | Reminder emails, 365-day audit log purge, expired session/reset-token purge (D-8) |
+| Resend | HTTP API | Transactional email | `fetch()` only, no SMTP |
+| Twilio | HTTP API | SMS (per-event toggle) | REST API, only used when an event enables SMS |
 ### Security & Rate Limiting
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| Cloudflare Turnstile | — | CAPTCHA on public RSVP form | Native CF integration; no third-party JS tracking; configurable on/off per event (SEC-02) |
-| Cloudflare Rate Limiting | — | 5/min/IP on RSVP POST | Workers-native via `CF-Connecting-IP` + KV counter, or Cloudflare's built-in rate limiting rules |
+| Cloudflare Turnstile | — | CAPTCHA on public RSVP form | Fails closed on a siteverify outage (S-1) |
+| Cloudflare KV | — | RSVP-submission rate limiter only (5/min/IP) | Not used for sessions — see Authentication above; best-effort defense-in-depth, not a hard guarantee (S-4) |
 ### Observability
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| `pino` | `9.x` | Structured JSON logging | Lightweight; works in Workers (no `fs` dependency when using browser/edge build); `pino/browser` import |
-| Cloudflare Workers Traces | — | OTEL-compatible traces | Built into Workers runtime; custom spans via `waitUntil` + `cf-trace-id` header |
-### Frontend (Charts & Accessibility)
+| `console.log(JSON.stringify(...))` | — | Structured JSON request logging | No `pino` dependency — Workers' `console.log` output is already captured as structured lines by Cloudflare Logpush/tail; adding pino would be a dependency for something one `JSON.stringify` call already does correctly here |
+| Cloudflare Workers Traces | — | Trace-ID propagation | Custom spans via `waitUntil` + `cf-trace-id` header (`src/domain/tracing.ts`) |
+### Frontend (Admin Dashboard Charts)
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| Chart.js | `4.x` | Admin dashboard charts | Accessible (ARIA labels, keyboard nav), lightweight, React wrapper `react-chartjs-2` available; ADMIN-06 charts |
-| `react-chartjs-2` | `5.x` | React bindings for Chart.js | Declarative Chart.js in React Router v7 loader-fed components |
-| `axe-core` | `4.x` | Accessibility assertions in CI | TEST-02; integrates with Playwright for zero-violation gate |
-| `@axe-core/playwright` | `4.x` | axe in Playwright tests | Run on public RSVP form + admin core pages in CI |
+| Chart.js | loaded via `cdn.jsdelivr.net` `<script>` (CSP-allowed) | Admin dashboard charts | No npm dependency/bundling — a CSP-compliant JSON-island (`<script type="application/json" data-chart-stats>`) passes data to a small bootstrap in `admin.js`; no React wrapper needed since there's no React |
+| `axe-core` / `@axe-core/playwright` | not yet installed | Accessibility assertions | Planned (T-4 in recommendations.md), not yet wired in — `playwright.config.ts` exists but `tests/e2e/` is empty (T-1, highest-ROI gap) |
 ### Internationalisation
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| `i18next` | `23.x` | i18n string management | Widely used, React integration via `react-i18next`; locale from event record (en/fr/es); I18N-01 |
-| `react-i18next` | `14.x` | React bindings | Works with React Router v7 loaders — pass locale strings as loader data to avoid client-side async |
+| Hand-rolled `t()` / `resolveLocale()` | `src/i18n/` | i18n string management for en/fr/es | No `i18next` dependency — the string set is small and fixed (public form + thank-you + capacity-full pages), so a plain lookup table avoids the pluralisation/namespace machinery an app this size doesn't need |
 ### Testing
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
 | Vitest | `4.1.0` | Unit + integration test runner | Peer required by `@cloudflare/vitest-pool-workers` |
-| `@cloudflare/vitest-pool-workers` | `0.13.3` | Run tests in Workers runtime | Tests run inside Miniflare (Workers runtime), not jsdom/Node — true fidelity for D1, KV, Queues bindings |
-| Playwright | `1.x` | E2E browser tests | TEST-01; `@axe-core/playwright` for accessibility assertions |
-| `wrangler` (dev mode) | `4.76.0` | Local D1 + Workers dev server for E2E | `wrangler dev --local` runs full Workers runtime locally with D1 SQLite |
+| `@cloudflare/vitest-pool-workers` | `0.13.3` | Run tests in Workers runtime | Tests run inside Miniflare, not jsdom/Node — true fidelity for D1/KV/Queues bindings |
+| Playwright | config present, no tests yet | E2E browser tests | T-1 in recommendations.md — highest-ROI gap identified in the review; not yet implemented |
 ### Code Quality
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| TypeScript | `5.x` | Type safety | Strict mode; `isolatedModules: true` for Workers compatibility |
-| ESLint | `9.x` | Linting + custom rules | Flat config (`eslint.config.ts`); custom rule enforcing `@req` / `@adr` JSDoc tags (TEST-03) |
+| TypeScript | `5.x` | Type safety | Strict mode |
+| ESLint | `9.x` | Linting + custom rules | Flat config (`eslint.config.ts`); custom rule enforcing `@req` JSDoc tags |
 | `@typescript-eslint` | `8.x` | TypeScript-aware linting | Strict type-checked rules |
-| Prettier | `3.x` | Code formatting | Consistent style; run in CI |
-## Alternatives Considered
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| Framework | React Router v7 (SSR) | HTMX + Hono JSX | RR7 is officially Cloudflare-documented; TypeScript loaders/actions; stronger accessibility story; HTMX deferred to v2 |
-| Framework | React Router v7 (SSR) | Next.js | Requires Node.js runtime; incompatible with Workers |
-| ORM | Drizzle ORM | Prisma | Prisma requires a query engine binary — incompatible with Workers runtime |
-| ORM | Drizzle ORM | raw `better-sqlite3` | No type safety; `better-sqlite3` is Node.js-only anyway |
-| Password hashing | `@noble/hashes` (argon2id) | `argon2` npm package | Requires native Node.js addon — incompatible with Workers |
-| Password hashing | `@noble/hashes` (argon2id) | WebCrypto PBKDF2 | argon2id is the stronger algorithm; PBKDF2 is a fallback only if CPU budget exceeded |
-| Email | Resend | SendGrid / Mailgun | Resend has cleaner API, Workers-compatible `fetch()` only; no SMTP SDKs needed |
-| Logging | pino/browser | `console.log` only | pino provides structured JSON logs with level filtering; structured logs parseable by Cloudflare Logpush |
-| i18n | i18next | Custom string maps | i18next has pluralisation, interpolation, namespace support — important for en/fr/es |
-| Testing | `@cloudflare/vitest-pool-workers` | `jest` + `jest-environment-miniflare` | `jest-environment-miniflare` is deprecated; official pool workers integration is the supported 2025 path |
+| Prettier | `3.x` | Code formatting | Run in CI |
+## Alternatives Considered (and why the original proposal changed)
+| Category | Originally Proposed | What Shipped | Why It Changed |
+|----------|---------------------|---------------|-----------------|
+| Framework | React Router v7 (SSR) | Server-rendered Hono HTML, no client framework | The admin UI's actual interactivity (confirm dialogs, one chart) didn't justify a build step, hydration cost, or the extra CSP surface a framework runtime needs |
+| ORM | Drizzle ORM as the query layer | Drizzle for schema/migrations only; raw `db.prepare()` SQL for every query | D1's SQL surface is small enough that a query builder added an abstraction layer without removing much boilerplate (A-1) |
+| Auth | Cloudflare Access + KV sessions | argon2id + D1 `sessions` table (hashed tokens) | KV's eventual consistency is wrong for auth state; Access adds an external IdP dependency this single-admin-per-event tool doesn't need |
+| Logging | `pino`/browser build | `console.log(JSON.stringify(...))` | Workers' console output is already captured as structured lines by Cloudflare's log tooling — pino added a dependency for no behavioral gain here |
+| i18n | `i18next` + `react-i18next` | Hand-rolled `t()`/`resolveLocale()` lookup table | Fixed, small string set (3 locales, a handful of pages) didn't need pluralisation/namespace machinery, and there's no React to bind `react-i18next` to |
+| Password hashing | `@noble/hashes` (argon2id) | Same — no change | Requires native Node.js addon (`argon2` npm) is incompatible with Workers; WebCrypto PBKDF2 was the fallback-only option, not needed |
+| Email | Resend | Same — no change | Clean HTTP API, Workers-compatible `fetch()` only |
 ## Project-Specific Configuration Notes
 ### Monorepo Layout (Recommended)
 ### Key wrangler.jsonc Fields
@@ -127,12 +120,11 @@ The project has two layers: a **static marketing site** (landing page, already l
 - Wrangler v4 release notes + config docs: https://developers.cloudflare.com/workers/wrangler/
 - D1 + Drizzle integration: https://developers.cloudflare.com/d1/community-projects/ and https://orm.drizzle.team/docs/connect-cloudflare-d1
 - Cloudflare Queues batching + DLQ: https://developers.cloudflare.com/queues/configuration/batching-retries/
-- React Router v7 on Cloudflare: https://developers.cloudflare.com/workers/frameworks/framework-guides/react-router/
 - Vitest Workers pool: https://developers.cloudflare.com/workers/testing/vitest-integration/
 - `@noble/hashes` argon2id: https://github.com/paulmillr/noble-hashes (v2.0.1 confirmed pure-JS)
 - WebCrypto PBKDF2 in Workers: https://developers.cloudflare.com/workers/runtime-apis/web-crypto/
 - Cloudflare Turnstile: https://developers.cloudflare.com/turnstile/
-- npm verified versions: wrangler@4.76.0, drizzle-orm@1.0.0-beta.2, drizzle-kit@0.31.10, hono@4.12.8, @hono/zod-validator@0.7.6, react-router@7.13.1, vitest@4.1.0, @cloudflare/vitest-pool-workers@0.13.3, @cloudflare/workers-types@4.20260317.1, zod@4.3.6, @noble/hashes@2.0.1
+- npm versions as installed (`app/package.json`, refreshed 2026-07-09): wrangler@4.76.0, drizzle-orm@0.45.1 (devDependency, schema/migrations only), drizzle-kit@0.31.10, hono@4.12.28, vitest@4.1.0, @cloudflare/vitest-pool-workers@0.13.3, @cloudflare/workers-types@4.20260317.1, zod@4.3.6, @noble/hashes@2.0.1, ical-generator@10.x, qrcode@1.5.x
 <!-- GSD:stack-end -->
 
 <!-- GSD:conventions-start source:CONVENTIONS.md -->

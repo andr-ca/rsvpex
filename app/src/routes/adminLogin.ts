@@ -15,6 +15,8 @@ import {
   clearLockout,
   createSession,
 } from '../domain/adminAuth'
+import { adminAuthRateLimit } from '../middleware/rateLimit'
+import { escHtml } from '../views/layout'
 
 const adminLoginRouter = new Hono<{ Bindings: Env }>()
 
@@ -22,11 +24,27 @@ const SESSION_EXPIRY_DAYS = 7
 const loginSchema = z.object({
   email: z.string().email().max(254),
   password: z.string().min(1).max(128),
+  next: z.string().optional(),
 })
+
+/**
+ * Only redirect to same-origin admin paths after login (C-16 in recommendations.md:
+ * the `next` param previously reached the login page but was never used, so the
+ * JSON-export re-auth flow always dropped the admin back at the dashboard instead
+ * of the export they were trying to re-authenticate for). Rejects protocol-relative
+ * ("//evil.com") and any path outside /rsvp/admin to avoid becoming an open redirect.
+ */
+function safeAdminRedirect(next: string | undefined): string {
+  if (next && next.startsWith('/rsvp/admin/') && !next.startsWith('//')) {
+    return next
+  }
+  return '/rsvp/admin'
+}
 
 adminLoginRouter.get('/login', (c) => {
   const error = c.req.query('error')
   const reset = c.req.query('reset')
+  const next = c.req.query('next') ?? ''
   return c.html(
     page(
       'Admin Login',
@@ -36,6 +54,7 @@ adminLoginRouter.get('/login', (c) => {
     ${error === 'invalid' ? '<p class="error">Invalid email or password.</p>' : ''}
     ${error === 'locked' ? '<p class="error">Account locked. Too many failed attempts. Please try again later or reset your password.</p>' : ''}
     <form method="POST" action="/rsvp/admin/login">
+      <input type="hidden" name="next" value="${escHtml(next)}">
       <label for="email">Email *</label>
       <input id="email" name="email" type="email" required maxlength="254" autocomplete="email">
       <label for="password">Password *</label>
@@ -48,14 +67,21 @@ adminLoginRouter.get('/login', (c) => {
   )
 })
 
-adminLoginRouter.post('/login', async (c) => {
+// Fixed-format dummy hash (S-5 in recommendations.md): verifying against this runs
+// the same argon2id cost as a real user, so response timing can't be used to tell
+// whether an email has an admin account. The value never matches any real password —
+// it's just a well-formed "salt_hex:hash_hex" string for verifyPassword() to chew on.
+const DUMMY_HASH = `${'00'.repeat(32)}:${'11'.repeat(32)}`
+
+adminLoginRouter.post('/login', adminAuthRateLimit(), async (c) => {
   const body = await c.req.parseBody()
   const parsed = loginSchema.safeParse(body)
   if (!parsed.success) {
     return c.redirect('/rsvp/admin/login?error=invalid', 302)
   }
 
-  const { email, password } = parsed.data
+  const { email, password, next } = parsed.data
+  const nextParam = next ? `&next=${encodeURIComponent(next)}` : ''
 
   const user = await c.env.DB.prepare(
     'SELECT id, password_hash, failed_login_attempts, locked_until, is_active FROM admin_users WHERE email = ? LIMIT 1',
@@ -69,9 +95,11 @@ adminLoginRouter.post('/login', async (c) => {
       is_active: number
     }>()
 
-  // Don't reveal whether user exists — always run the same checks
+  // Don't reveal whether user exists — always run the same checks and the
+  // same argon2id cost (verifyPassword against DUMMY_HASH) either way.
   if (!user || !user.is_active) {
-    return c.redirect('/rsvp/admin/login?error=invalid', 302)
+    await verifyPassword(password, DUMMY_HASH, c.env.ARGON2_PEPPER)
+    return c.redirect(`/rsvp/admin/login?error=invalid${nextParam}`, 302)
   }
 
   const lockout = checkLockout(user.failed_login_attempts, user.locked_until)
@@ -79,10 +107,10 @@ adminLoginRouter.post('/login', async (c) => {
     return c.json({ error: 'account_locked', retry_after_seconds: lockout.retryAfterSeconds }, 423)
   }
 
-  const valid = await verifyPassword(password, user.password_hash)
+  const valid = await verifyPassword(password, user.password_hash, c.env.ARGON2_PEPPER)
   if (!valid) {
     await recordFailedAttempt(c.env.DB, user.id)
-    return c.redirect('/rsvp/admin/login?error=invalid', 302)
+    return c.redirect(`/rsvp/admin/login?error=invalid${nextParam}`, 302)
   }
 
   await clearLockout(c.env.DB, user.id)
@@ -96,7 +124,7 @@ adminLoginRouter.post('/login', async (c) => {
     path: '/',
   })
 
-  return c.redirect('/rsvp/admin', 303)
+  return c.redirect(safeAdminRedirect(next), 303)
 })
 
 export default adminLoginRouter
@@ -120,12 +148,4 @@ function page(title: string, body: string): string {
 </head>
 <body>${body}</body>
 </html>`
-}
-
-function escHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }

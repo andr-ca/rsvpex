@@ -17,6 +17,7 @@ import { t, resolveLocale, type SupportedLocale } from '../i18n'
 const thankYouRouter = new Hono<{ Bindings: Env }>()
 
 type EventRow = {
+  slug: string
   title: string
   start_at: string
   end_at: string | null
@@ -35,7 +36,7 @@ thankYouRouter.get('/thank-you', async (c) => {
   if (!rsvp) return c.html(renderError(t('thanks.notFound', 'en'), 'en'), 404)
 
   const event = await c.env.DB.prepare(
-    `SELECT title, start_at, end_at, location_text, wishlist_url, timezone, questions, locale
+    `SELECT slug, title, start_at, end_at, location_text, wishlist_url, timezone, questions, locale
        FROM events WHERE id = ? LIMIT 1`,
   )
     .bind(rsvp.event_id)
@@ -63,15 +64,21 @@ function renderThankYou(
     event.questions || '[]',
   )
 
+  // start_at is stored as true UTC (C-5 in recommendations.md) — an explicit
+  // timeZone is required here, otherwise this formats in the Workers
+  // runtime's own zone (UTC) instead of the event's, showing guests the
+  // wrong local time.
   const eventDate = new Date(event.start_at).toLocaleDateString(locale, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: event.timezone,
   })
   const eventTime = new Date(event.start_at).toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: event.timezone,
   })
 
   const dietaryHtml =
@@ -131,7 +138,7 @@ function renderThankYou(
 
     <div class="action-row">
       <a href="/rsvp/ics/${escHtml(rsvp.rsvp_token)}" class="btn">${escHtml(t('thanks.downloadCalendar', locale))}</a>
-      <a href="?rid=${escHtml(rsvp.rsvp_token)}" class="btn btn-outline">${escHtml(t('thanks.editRsvp', locale))}</a>
+      <a href="/rsvp/${escHtml(event.slug)}?rid=${escHtml(rsvp.rsvp_token)}" class="btn btn-outline">${escHtml(t('thanks.editRsvp', locale))}</a>
     </div>
   `,
     locale,

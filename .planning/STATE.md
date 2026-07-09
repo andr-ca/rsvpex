@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-23T18:16:05.784Z"
+stopped_at: Phase 11 complete; post-launch remediation (quick tasks) in progress
+last_updated: "2026-07-09T02:20:00.000Z"
 progress:
   total_phases: 11
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 2
+  completed_phases: 11
+  total_plans: 11
+  completed_plans: 11
 ---
 
 # RSVPex — Project State
@@ -28,8 +28,11 @@ See: `.planning/PROJECT.md`
 
 ## Current Focus
 
-**Phase:** 3 — Thank-You, ICS & Edit Flow  
-**Status:** Pending — Phase 2 complete; ready to begin Phase 3
+**Phase:** Post-launch remediation (no new numbered phase — working from `recommendations.md`)  
+**Status:** All 11 roadmap phases complete. A full architecture/implementation/CI review
+(quick task `260708-uot`) produced `recommendations.md`; a follow-up quick task
+(`260708-v1c`) is implementing and validating every finding, tracked in
+`recommendations-update.md`.
 
 ---
 
@@ -39,23 +42,33 @@ See: `.planning/PROJECT.md`
 |-------|------|--------|-----------|
 | 1 | Foundation | Complete | 2026-03-23 |
 | 2 | Public RSVP Form Core | Complete | 2026-03-23 |
-| 3 | Thank-You, ICS & Edit Flow | Pending | — |
-| 4 | Admin Auth | Pending | — |
-| 5 | Admin Dashboard | Pending | — |
-| 6 | Data Management | Pending | — |
-| 7 | Notifications | Pending | — |
-| 8 | Cron & Audit | Pending | — |
-| 9 | Internationalisation | Pending | — |
-| 10 | Observability & Security Hardening | Pending | — |
-| 11 | Testing & CI | Pending | — |
+| 3 | Thank-You, ICS & Edit Flow | Complete | 2026-03-23 |
+| 4 | Admin Auth | Complete | 2026-03-23 |
+| 5 | Admin Dashboard | Complete | 2026-03-24 |
+| 6 | Data Management | Complete | 2026-03-27 |
+| 7 | Notifications | Complete | 2026-03-27 |
+| 8 | Cron & Audit | Complete | 2026-03-27 |
+| 9 | Internationalisation | Complete | 2026-03-27 |
+| 10 | Observability & Security Hardening | Complete | 2026-03-28 |
+| 11 | Testing & CI | Complete | 2026-03-28 |
 
-**Progress:** ████░░░░░░░░░░░░░░░░ 2/11 phases complete
+**Progress:** ████████████████████ 11/11 phases complete
+
+Dates reconciled from git log (H-1 in recommendations.md — this table previously
+said "2/11 complete, Phase 3 pending" long after Phase 11 had shipped). No
+per-phase `NN-SUMMARY.md` exists for phases 3–11 beyond `01-SUMMARY.md` /
+`02-SUMMARY.md`; backfilling those is optional and not done here — git log on
+the commits above is the source of truth for what shipped in each phase.
 
 ---
 
 ## Active Work
 
-None — ready to begin Phase 3 (Thank-You, ICS & Edit Flow)
+Working through `recommendations.md` end-to-end (quick task `260708-v1c`):
+Milestone A (7 P0 ship blockers) — done. Milestone B (C-1..C-17 correctness) —
+done. Milestone C (S-1..S-16 security) — done. Milestone D (CI/CD, testing,
+docs hygiene) — in progress. See `recommendations-update.md` at the repo root
+for the finding-by-finding disposition and validation evidence.
 
 ---
 
@@ -70,6 +83,7 @@ None
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260708-uot | Full project review (idea, architecture, implementation, CI/CD) → recommendations.md | 2026-07-09 | e188eca | [260708-uot-full-project-review-idea-architecture-im](./quick/260708-uot-full-project-review-idea-architecture-im/) |
+| 260708-v1c | Addressed every recommendations.md finding (P0/C/S/D/H) → recommendations-update.md | 2026-07-09 | pending | [260708-v1c-address-recommendations-md-findings-impl](./quick/260708-v1c-address-recommendations-md-findings-impl/) |
 
 ---
 
@@ -101,9 +115,9 @@ None
 | Queue at-least-once delivery | Phase 7 | ✅ Resolved — `notification_log` idempotency table with `INSERT OR IGNORE` |
 | KV eventual consistency for sessions | Phase 4 | ✅ Resolved — D1 `sessions` table instead of KV |
 | ICS pure-string generation (no `fs`) | Phase 3 | ✅ Resolved — `ical-generator` (pure JS) or manual RFC 5545 string; never `fs.writeFile` |
-| D1 `notification_log` `INSERT OR IGNORE` semantics | Phase 7 | 🔲 Active — verify in Miniflare before shipping NOTIF-01 |
-| CF Access vs app-level session for admin | Phase 4 | 🔲 Active — architecture compatible with both; decision deferred to Phase 4 planning |
-| Coverage tooling: v8 + istanbul both crash in vitest-pool-workers 0.13.3 | Phase 11 | 🔲 Active — known CF upstream issue; address when upgrading test stack |
+| D1 `notification_log` `INSERT OR IGNORE` semantics | Phase 7 | ✅ Resolved — verified in Miniflare integration tests |
+| CF Access vs app-level session for admin | Phase 4 | ✅ Resolved — app-level session (argon2id + D1 `sessions` table), no CF Access dependency |
+| Coverage tooling: v8 + istanbul both crash in vitest-pool-workers 0.13.3 | Phase 11 | 🔲 Active — known CF upstream issue; both packages removed from devDependencies (D-6 in recommendations.md) rather than carried as dead weight; revisit when the ecosystem adds support |
 
 ---
 
@@ -130,21 +144,21 @@ The following 12 pitfalls from `research/PITFALLS.md` must be addressed in the p
 | Pitfall | Phase to Address | Status |
 |---------|-----------------|--------|
 | Capacity race condition (non-atomic check-then-insert) | Phase 2 | ✅ Resolved |
-| argon2id WASM CPU budget | Phase 4 | Pending |
-| Queue at-least-once → duplicate emails | Phase 7 | Pending |
-| KV stale sessions after logout | Phase 4 | Pending |
+| argon2id WASM CPU budget | Phase 4 | ✅ Resolved — `@noble/hashes` pure-JS, OWASP min params |
+| Queue at-least-once → duplicate emails | Phase 7 | ✅ Resolved — `notification_log` idempotency table |
+| KV stale sessions after logout | Phase 4 | ✅ Moot — sessions live in D1, not KV (see Key Decisions above); `deleteSession`/`deleteAllSessionsForUser` are synchronous D1 deletes |
 | `db.batch()` not rollback-safe | Phase 2 | ✅ Resolved (no `BEGIN/COMMIT` needed) |
 | Worker bundle size > 10 MB | Phase 1 | ✅ Resolved (20.30 KiB gzip) |
 | Wrangler binding name mismatch | Phase 1 | ✅ Resolved |
 | Vitest Workers pool misconfiguration | Phase 1 | ✅ Resolved |
 | D1 local vs production SQL compatibility | Phase 1 | ✅ Resolved |
-| ICS generation with Node.js `fs` dependency | Phase 3 | Pending |
+| ICS generation with Node.js `fs` dependency | Phase 3 | ✅ Resolved — `ical-generator` (pure JS), no `fs` |
 | D1 "overloaded" under burst RSVP traffic | Phase 2 (load test) | ✅ 20-concurrent test passes |
 | Stale D1 reads with read replication | Post-launch (deferred) | Deferred |
 
 ### Architecture Reminders
 
-- Single Worker exports `fetch`, `queue`, `scheduled` from `apps/worker/src/index.ts`
+- Single Worker exports `fetch`, `queue`, `scheduled` from `app/src/index.ts`
 - `domain/` folder is pure functions — no CF bindings — testable without Miniflare
 - `wrangler types` must be run after every binding change; output committed to repo
 - D1 schema: all UUIDs as `TEXT`, timestamps as `TEXT ISO-8601`, booleans as `INTEGER 0/1`, JSON as `TEXT`
@@ -156,10 +170,10 @@ The following 12 pitfalls from `research/PITFALLS.md` must be addressed in the p
 
 ## Session Continuity
 
-Last session: 2026-03-23T18:16:05.781Z
-Stopped at: Phase 3 context gathered
+Last session: 2026-07-09T02:20:00.000Z
+Stopped at: Milestone D (recommendations.md remediation) in progress — see `recommendations-update.md`
 
 ---
 
 *State initialized: 2026-03-23*  
-*Last updated: 2026-03-23 — Phase 1 plan in progress; Tasks 1–7 committed, Task 8 uncommitted, Tasks 9–10 pending*
+*Last updated: 2026-07-09 — H-1 reconciliation (recommendations.md): phases 3–11 marked complete with dates backfilled from git log; stale Research Flags and Pitfall Watchlist entries resolved.*

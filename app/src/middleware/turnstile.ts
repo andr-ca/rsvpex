@@ -28,8 +28,11 @@ export function turnstileVerify(): MiddlewareHandler<{ Bindings: Env }> {
   return async (c, next) => {
     const secretKey = c.env.TURNSTILE_SECRET_KEY
 
-    // Dev/test bypass — never bypass in production
-    if (secretKey === TEST_BYPASS_KEY) {
+    // Dev/test bypass — requires BOTH the magic secret AND a non-production
+    // environment (S-1 in recommendations.md): gating on the secret value
+    // alone means a prod deploy that accidentally sets TURNSTILE_SECRET_KEY
+    // to this literal would silently disable CAPTCHA.
+    if (secretKey === TEST_BYPASS_KEY && c.env.ENVIRONMENT !== 'production') {
       await next()
       return
     }
@@ -41,8 +44,9 @@ export function turnstileVerify(): MiddlewareHandler<{ Bindings: Env }> {
       return c.json({ error: 'captcha_missing' }, 400)
     }
 
-    const ip =
-      c.req.raw.headers.get('CF-Connecting-IP') ?? c.req.raw.headers.get('X-Forwarded-For') ?? ''
+    // Only CF-Connecting-IP (S-4 in recommendations.md): X-Forwarded-For is
+    // client-spoofable, and Turnstile uses `remoteip` as a verification signal.
+    const ip = c.req.raw.headers.get('CF-Connecting-IP') ?? ''
 
     const formData = new FormData()
     formData.append('secret', secretKey)
@@ -56,10 +60,11 @@ export function turnstileVerify(): MiddlewareHandler<{ Bindings: Env }> {
         body: formData,
       })
     } catch {
-      // Network failure — fail open to avoid blocking legitimate users
-      // if the Turnstile API is temporarily unreachable.
-      await next()
-      return
+      // Fail CLOSED (S-1 in recommendations.md): the previous fail-open behavior
+      // meant CAPTCHA silently stopped protecting the form during any Turnstile
+      // outage — including one an attacker could induce. A brief 503 here is a
+      // better trade than turning off abuse protection for real users.
+      return c.json({ error: 'captcha_unavailable' }, 503)
     }
 
     const result = await verifyResponse.json<{ success: boolean }>()

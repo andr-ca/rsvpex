@@ -2,8 +2,18 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "rsvpex-app",
   "main": "src/index.ts",
-  "compatibility_date": "2025-01-01",
+  // D-7 in recommendations.md: was pinned to 2025-01-01 (over a year stale
+  // at time of audit). `nodejs_compat` is only needed for `qrcode`'s
+  // pngjs/zlib usage — bumped deliberately, not left to drift again.
+  "compatibility_date": "2026-01-01",
   "compatibility_flags": ["nodejs_compat"],
+
+  // ── REQUIRED BEFORE FIRST DEPLOY ─────────────────────────────────────────
+  // database_id and kv id below are PLACEHOLDER values. Provision real
+  // resources and replace them before running `wrangler deploy`:
+  //   wrangler d1 create rsvpex-db
+  //   wrangler kv namespace create RATE_LIMIT_KV
+  // See app/README.md for the full first-deploy runbook.
 
   "d1_databases": [
     {
@@ -16,7 +26,9 @@
 
   "kv_namespaces": [
     {
-      "binding": "SESSION_KV",
+      // Used only by the RSVP-submission rate limiter (middleware/rateLimit.ts).
+      // Admin sessions live in D1, not KV — see STATE.md Key Decisions.
+      "binding": "RATE_LIMIT_KV",
       "id": "PLACEHOLDER"
     }
   ],
@@ -26,10 +38,6 @@
       {
         "binding": "NOTIFICATIONS_QUEUE",
         "queue": "rsvpex-notifications"
-      },
-      {
-        "binding": "AUDIT_QUEUE",
-        "queue": "rsvpex-audit"
       }
     ],
     "consumers": [
@@ -39,24 +47,35 @@
         "max_batch_timeout": 30,
         "max_retries": 3,
         "dead_letter_queue": "rsvpex-notifications-dlq"
-      },
-      {
-        "queue": "rsvpex-audit",
-        "max_batch_size": 50,
-        "max_batch_timeout": 10,
-        "max_retries": 5,
-        "dead_letter_queue": "rsvpex-audit-dlq"
       }
     ]
   },
 
+  // Fires once daily at 06:00 UTC (D-8 in recommendations.md). This is a
+  // fixed UTC instant, not "6am event-local time" — combined with C-5's
+  // timezone normalization, reminder_days_before now counts correctly, but
+  // hosts far from UTC should know reminder emails always go out at the
+  // same UTC hour regardless of the event's own timezone.
   "triggers": {
     "crons": ["0 6 * * *"]
   },
 
-  // TURNSTILE_SECRET_KEY is a secret — set via `wrangler secret put TURNSTILE_SECRET_KEY`
-  // for production, or in .dev.vars for local development.
+  // TURNSTILE_SITE_KEY and DEPLOYMENT_DOMAIN are public (embedded in HTML / equal to the
+  // browser's own address bar) — vars, not secrets. DEPLOYMENT_DOMAIN gates the CSRF Origin
+  // check (middleware/csrf.ts) and is used to build absolute links in outbound emails/SMS
+  // (handlers/queue.ts) instead of a hardcoded hostname; it MUST be set before deploying.
+  // TURNSTILE_SECRET_KEY, SETUP_SECRET, IP_HASH_KEY, ARGON2_PEPPER and the Resend/Twilio
+  // credentials are secrets — set via `wrangler secret put <NAME>` for production, or in
+  // .dev.vars for local development. Do NOT declare secret names in `vars`: an empty var of
+  // the same name shadows the real secret at runtime.
+  // ENVIRONMENT gates the 'test-secret' bypasses in middleware/turnstile.ts and
+  // middleware/rateLimit.ts (S-1 in recommendations.md): the bypass now requires
+  // BOTH the magic secret value AND ENVIRONMENT !== 'production', so a prod
+  // deploy can never disable CAPTCHA/rate-limiting just because a secret was
+  // accidentally set to the test literal.
   "vars": {
-    "TURNSTILE_SECRET_KEY": ""
+    "TURNSTILE_SITE_KEY": "PLACEHOLDER_SITE_KEY",
+    "DEPLOYMENT_DOMAIN": "https://rsvpex.example.com",
+    "ENVIRONMENT": "production"
   }
 }

@@ -54,9 +54,19 @@ export function dietaryToText(json: string): string {
 
 /**
  * Escape and quote a CSV cell value.
+ *
+ * Also guards against CSV/formula injection (S-7 in recommendations.md):
+ * guest-controlled fields (name, notes) land in a CSV the host opens in
+ * Excel/Sheets. A value starting with = + - @ or a tab is interpreted as a
+ * formula by those apps, letting a guest run code in the host's spreadsheet.
+ * Prefixing with a leading apostrophe forces spreadsheet apps to treat the
+ * cell as literal text.
  */
 function csvCell(val: unknown): string {
-  const str = val == null ? '' : String(val)
+  let str = val == null ? '' : String(val)
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = "'" + str
+  }
   if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
     return '"' + str.replace(/"/g, '""') + '"'
   }

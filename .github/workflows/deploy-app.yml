@@ -1,0 +1,79 @@
+name: Deploy Worker App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/deploy-app.yml'
+  workflow_dispatch: {}
+
+# Only one deploy at a time — migrations must not race.
+concurrency:
+  group: deploy-app-production
+  cancel-in-progress: false
+
+jobs:
+  # Re-run the same gates as ci.yml. Deploys are push-to-main triggered and
+  # don't share a run with the PR's CI job, so this can't assume CI already
+  # passed for this exact commit.
+  verify:
+    name: Lint, Typecheck, Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run format:check
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm exec vitest run
+
+  deploy:
+    name: Migrate + Deploy
+    needs: verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+
+      # Fails loudly if wrangler.jsonc still has PLACEHOLDER resource IDs —
+      # see the first-deploy runbook in app/README.md.
+      - name: Verify wrangler.jsonc has real resource IDs
+        run: |
+          if grep -q '"database_id": "PLACEHOLDER"' wrangler.jsonc || grep -q '"id": "PLACEHOLDER"' wrangler.jsonc; then
+            echo "::error::wrangler.jsonc still has PLACEHOLDER database_id/kv id. Provision real D1/KV resources and update wrangler.jsonc before deploying (see app/README.md)." >&2
+            exit 1
+          fi
+
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler d1 migrations apply rsvpex-db --remote
+
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler deploy

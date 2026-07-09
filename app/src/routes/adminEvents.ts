@@ -19,7 +19,9 @@ import {
   getEventStats,
 } from '../domain/adminEvents'
 import { requireAdmin } from '../middleware/requireAdmin'
-import { writeAuditLog } from '../domain/audit'
+import { writeAuditLog, buildDiff } from '../domain/audit'
+import { escHtml, adminPage, csrfField } from '../views/layout'
+import { localToUtc, utcToLocal } from '../domain/timezone'
 
 /** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
 function fireAuditLog(
@@ -33,7 +35,40 @@ function fireAuditLog(
   }
 }
 
-const adminEventsRouter = new Hono<{ Bindings: Env; Variables: { adminUserId: string } }>()
+/**
+ * Converts the datetime-local fields of a parsed event form submission from
+ * event-local wall-clock time to UTC ISO-8601 (C-5 in recommendations.md).
+ * Returns `{ error }` instead of throwing so callers can render a normal
+ * form-validation error rather than a 500 on a garbled timezone name.
+ */
+function normalizeEventTimes<
+  T extends {
+    timezone: string
+    start_at: string
+    end_at?: string
+    opens_at?: string
+    closes_at?: string
+  },
+>(
+  d: T,
+):
+  | { start_at: string; end_at?: string; opens_at?: string; closes_at?: string }
+  | { error: string } {
+  try {
+    return {
+      start_at: localToUtc(d.timezone, d.start_at),
+      end_at: d.end_at ? localToUtc(d.timezone, d.end_at) : undefined,
+      opens_at: d.opens_at ? localToUtc(d.timezone, d.opens_at) : undefined,
+      closes_at: d.closes_at ? localToUtc(d.timezone, d.closes_at) : undefined,
+    }
+  } catch {
+    return { error: 'Invalid timezone or date/time value.' }
+  }
+}
+
+type Variables = { adminUserId: string; csrfToken?: string }
+
+const adminEventsRouter = new Hono<{ Bindings: Env; Variables: Variables }>()
 
 adminEventsRouter.use('/rsvp/admin/events', requireAdmin)
 adminEventsRouter.use('/rsvp/admin/events/*', requireAdmin)
@@ -64,6 +99,21 @@ const eventSchema = z.object({
   notify_via_email: z.coerce.boolean().optional().default(true),
   notify_via_sms: z.coerce.boolean().optional().default(false),
   reminder_days_before: z.coerce.number().int().min(0).max(365).optional(),
+  questions: z
+    .string()
+    .max(20000)
+    .optional()
+    .refine(
+      (val) => {
+        if (!val || val.trim() === '') return true
+        try {
+          return Array.isArray(JSON.parse(val))
+        } catch {
+          return false
+        }
+      },
+      { message: 'Questions must be a valid JSON array' },
+    ),
 })
 
 // GET /rsvp/admin/events — list all events
@@ -103,25 +153,29 @@ adminEventsRouter.get('/rsvp/admin/events', async (c) => {
       </tbody>
     </table>
   `,
+      c.get('csrfToken'),
     ),
   )
 })
 
 // GET /rsvp/admin/events/new — new event form
 adminEventsRouter.get('/rsvp/admin/events/new', (c) => {
+  const csrfToken = c.get('csrfToken') ?? ''
   return c.html(
     adminPage(
       'New Event — RSVPex Admin',
       `
     <h1>New Event</h1>
-    ${eventForm(null)}
+    ${eventForm(null, csrfToken)}
   `,
+      csrfToken,
     ),
   )
 })
 
 // POST /rsvp/admin/events — create event
 adminEventsRouter.post('/rsvp/admin/events', async (c) => {
+  const csrfToken = c.get('csrfToken') ?? ''
   const body = await c.req.parseBody()
   const parsed = eventSchema.safeParse(body)
   if (!parsed.success) {
@@ -132,21 +186,38 @@ adminEventsRouter.post('/rsvp/admin/events', async (c) => {
         `
       <h1>New Event</h1>
       <div class="error">${Object.values(errors).flat().join(', ')}</div>
-      ${eventForm(null, body as Record<string, string>)}
+      ${eventForm(null, csrfToken, body as Record<string, string>)}
     `,
+        csrfToken,
       ),
       422,
     )
   }
   const d = parsed.data
+  const times = normalizeEventTimes(d)
+  if ('error' in times) {
+    return c.html(
+      adminPage(
+        'New Event — RSVPex Admin',
+        `
+      <h1>New Event</h1>
+      <div class="error">${escHtml(times.error)}</div>
+      ${eventForm(null, csrfToken, body as Record<string, string>)}
+    `,
+        csrfToken,
+      ),
+      422,
+    )
+  }
+  const questionsJson = d.questions && d.questions.trim() !== '' ? d.questions : '[]'
   const id = await createEvent(c.env.DB, {
     title: d.title,
     slug: d.slug,
     hostName: d.host_name,
     descriptionHtml: d.description_html,
     timezone: d.timezone,
-    startAt: d.start_at,
-    endAt: d.end_at,
+    startAt: times.start_at,
+    endAt: times.end_at,
     locationText: d.location_text,
     wishlistUrl: d.wishlist_url || undefined,
     visibility: d.visibility,
@@ -165,7 +236,7 @@ adminEventsRouter.post('/rsvp/admin/events', async (c) => {
     notifyViaEmail: d.notify_via_email,
     notifyViaSms: d.notify_via_sms,
     reminderDaysBefore: d.reminder_days_before,
-    questions: '[]',
+    questions: questionsJson,
   })
   fireAuditLog(
     c,
@@ -174,7 +245,7 @@ adminEventsRouter.post('/rsvp/admin/events', async (c) => {
       entityType: 'event',
       entityId: id,
       action: 'create',
-      diff: { title: d.title },
+      diff: { title: d.title, slug: d.slug, start_at: d.start_at, visibility: d.visibility },
     }),
   )
   return c.redirect(`/rsvp/admin/events/${id}`, 303)
@@ -185,6 +256,7 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
   const stats = await getEventStats(c.env.DB, event.id)
+  const csrfToken = c.get('csrfToken') ?? ''
   const capacityStr =
     stats.capacity != null ? `${stats.attending}/${stats.capacity}` : `${stats.attending} attending`
   return c.html(
@@ -205,7 +277,7 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
     <dl>
       <dt>Status</dt><dd><span class="badge badge-${event.status}">${event.status}</span></dd>
       <dt>Slug</dt><dd><code>${escHtml(event.slug)}</code></dd>
-      <dt>Starts</dt><dd>${event.start_at}</dd>
+      <dt>Starts</dt><dd>${escHtml(String(event.start_at))} (${escHtml(String(event.timezone))})</dd>
       <dt>Visibility</dt><dd>${event.visibility}</dd>
       <dt>Capacity</dt><dd>${capacityStr}</dd>
       <dt>Locale</dt><dd>${event.locale}</dd>
@@ -216,6 +288,7 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
         event.status === 'draft'
           ? `
         <form method="POST" action="/rsvp/admin/events/${event.id}/publish" style="display:inline">
+          ${csrfField(csrfToken)}
           <button type="submit" class="btn btn-primary">Publish Event</button>
         </form>
       `
@@ -224,8 +297,9 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
       ${
         event.status !== 'archived'
           ? `
-        <form method="POST" action="/rsvp/admin/events/${event.id}/archive" style="display:inline">
-          <button type="submit" onclick="return confirm('Archive this event?')">Archive</button>
+        <form method="POST" action="/rsvp/admin/events/${event.id}/archive" style="display:inline" data-confirm="Archive this event?">
+          ${csrfField(csrfToken)}
+          <button type="submit">Archive</button>
         </form>
       `
           : ''
@@ -233,6 +307,7 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
     </div>
     ${chartSection(event.id, stats)}
   `,
+      csrfToken,
     ),
   )
 })
@@ -241,14 +316,16 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
 adminEventsRouter.get('/rsvp/admin/events/:id/edit', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+  const csrfToken = c.get('csrfToken') ?? ''
   return c.html(
     adminPage(
       `Edit ${escHtml(event.title)} — RSVPex Admin`,
       `
     <h1>Edit Event</h1>
     ${event.status === 'published' ? '<div class="warning">This event is published — changes will affect the live form immediately.</div>' : ''}
-    ${eventForm(event)}
+    ${eventForm(event, csrfToken)}
   `,
+      csrfToken,
     ),
   )
 })
@@ -257,6 +334,7 @@ adminEventsRouter.get('/rsvp/admin/events/:id/edit', async (c) => {
 adminEventsRouter.post('/rsvp/admin/events/:id/edit', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+  const csrfToken = c.get('csrfToken') ?? ''
   const body = await c.req.parseBody()
   const parsed = eventSchema.safeParse(body)
   if (!parsed.success) {
@@ -267,20 +345,37 @@ adminEventsRouter.post('/rsvp/admin/events/:id/edit', async (c) => {
         `
       <h1>Edit Event</h1>
       <div class="error">${Object.values(errors).flat().join(', ')}</div>
-      ${eventForm(event, body as Record<string, string>)}
+      ${eventForm(event, csrfToken, body as Record<string, string>)}
     `,
+        csrfToken,
       ),
       422,
     )
   }
   const d = parsed.data
+  const times = normalizeEventTimes(d)
+  if ('error' in times) {
+    return c.html(
+      adminPage(
+        `Edit ${escHtml(event.title)} — RSVPex Admin`,
+        `
+      <h1>Edit Event</h1>
+      <div class="error">${escHtml(times.error)}</div>
+      ${eventForm(event, csrfToken, body as Record<string, string>)}
+    `,
+        csrfToken,
+      ),
+      422,
+    )
+  }
+  const questionsJson = d.questions && d.questions.trim() !== '' ? d.questions : undefined
   await updateEvent(c.env.DB, event.id, {
     title: d.title,
     hostName: d.host_name,
     descriptionHtml: d.description_html,
     timezone: d.timezone,
-    startAt: d.start_at,
-    endAt: d.end_at,
+    startAt: times.start_at,
+    endAt: times.end_at,
     locationText: d.location_text,
     wishlistUrl: d.wishlist_url || undefined,
     visibility: d.visibility,
@@ -294,12 +389,66 @@ adminEventsRouter.post('/rsvp/admin/events/:id/edit', async (c) => {
     locale: d.locale,
     maxGuestsTotal: d.max_guests_total ?? undefined,
     maxPartySizePerRsvp: d.max_party_size_per_rsvp,
-    opensAt: d.opens_at,
-    closesAt: d.closes_at,
+    opensAt: times.opens_at,
+    closesAt: times.closes_at,
     notifyViaEmail: d.notify_via_email,
     notifyViaSms: d.notify_via_sms,
     reminderDaysBefore: d.reminder_days_before,
+    questions: questionsJson,
   })
+
+  // @req SEC-04 — audit diff built from actual before/after values, not a hand-rolled
+  // stub (C-13 in recommendations.md). Events carry no PII, so no redactPii() needed.
+  const before: Record<string, unknown> = {
+    title: event.title,
+    host_name: event.host_name,
+    timezone: event.timezone,
+    start_at: event.start_at,
+    end_at: event.end_at,
+    location_text: event.location_text,
+    wishlist_url: event.wishlist_url,
+    visibility: event.visibility,
+    is_kids_event: Boolean(event.is_kids_event),
+    allow_children: Boolean(event.allow_children),
+    allow_siblings: Boolean(event.allow_siblings),
+    allow_parents: Boolean(event.allow_parents),
+    allow_status_choice: Boolean(event.allow_status_choice),
+    enable_waitlist: Boolean(event.enable_waitlist),
+    enable_heuristic_dup_check: Boolean(event.enable_heuristic_dup_check),
+    locale: event.locale,
+    max_guests_total: event.max_guests_total,
+    max_party_size_per_rsvp: event.max_party_size_per_rsvp,
+    opens_at: event.opens_at,
+    closes_at: event.closes_at,
+    notify_via_email: Boolean(event.notify_via_email),
+    notify_via_sms: Boolean(event.notify_via_sms),
+    reminder_days_before: event.reminder_days_before,
+  }
+  const after: Record<string, unknown> = {
+    title: d.title,
+    host_name: d.host_name ?? null,
+    timezone: d.timezone,
+    start_at: times.start_at,
+    end_at: times.end_at ?? null,
+    location_text: d.location_text ?? null,
+    wishlist_url: d.wishlist_url || null,
+    visibility: d.visibility,
+    is_kids_event: d.is_kids_event,
+    allow_children: d.allow_children,
+    allow_siblings: d.allow_siblings,
+    allow_parents: d.allow_parents,
+    allow_status_choice: d.allow_status_choice,
+    enable_waitlist: d.enable_waitlist,
+    enable_heuristic_dup_check: d.enable_heuristic_dup_check,
+    locale: d.locale,
+    max_guests_total: d.max_guests_total ?? null,
+    max_party_size_per_rsvp: d.max_party_size_per_rsvp,
+    opens_at: times.opens_at ?? null,
+    closes_at: times.closes_at ?? null,
+    notify_via_email: d.notify_via_email,
+    notify_via_sms: d.notify_via_sms,
+    reminder_days_before: d.reminder_days_before ?? null,
+  }
   fireAuditLog(
     c,
     writeAuditLog(c.env.DB, {
@@ -307,7 +456,7 @@ adminEventsRouter.post('/rsvp/admin/events/:id/edit', async (c) => {
       entityType: 'event',
       entityId: event.id,
       action: 'update',
-      diff: { title: d.title },
+      diff: buildDiff(before, after),
     }),
   )
   return c.redirect(`/rsvp/admin/events/${event.id}?saved=1`, 303)
@@ -353,109 +502,65 @@ export default adminEventsRouter
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
-function escHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function adminPage(title: string, content: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escHtml(title)}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1.5rem; }
-    nav { display: flex; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid #ddd; margin-bottom: 2rem; }
-    nav a { text-decoration: none; color: #333; }
-    nav a:hover { color: #0066cc; }
-    h1 { margin-top: 0; }
-    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-    .page-header h1 { margin: 0; }
-    .actions { display: flex; gap: .5rem; }
-    .btn { padding: .5rem 1rem; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; background: #f5f5f5; cursor: pointer; font-size: .9rem; }
-    .btn:hover { background: #e5e5e5; }
-    .btn-primary { background: #0066cc; color: #fff; border-color: #0066cc; }
-    .btn-primary:hover { background: #0055aa; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: .5rem .75rem; text-align: left; border-bottom: 1px solid #eee; }
-    th { background: #f5f5f5; font-weight: 600; }
-    .badge { padding: .2rem .5rem; border-radius: 3px; font-size: .8rem; text-transform: uppercase; }
-    .badge-draft { background: #eee; color: #555; }
-    .badge-published { background: #dfd; color: #060; }
-    .badge-closed { background: #ffeedd; color: #c60; }
-    .badge-archived { background: #eee; color: #999; }
-    .badge-attending { background: #dfd; color: #060; }
-    .badge-waitlist { background: #ffeedd; color: #c60; }
-    .badge-not_attending { background: #fdd; color: #c00; }
-    .badge-maybe { background: #eef; color: #339; }
-    .error { color: #c00; background: #fee; padding: .75rem; border-radius: 4px; margin-bottom: 1rem; }
-    .success { color: #060; background: #efe; padding: .75rem; border-radius: 4px; margin-bottom: 1rem; }
-    .warning { color: #840; background: #fff3cd; padding: .75rem; border-radius: 4px; margin-bottom: 1rem; border: 1px solid #ffc107; }
-    label { display: block; margin-top: 1rem; font-weight: 600; }
-    input, select, textarea { display: block; width: 100%; padding: .5rem; margin-top: .25rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
-    textarea { min-height: 80px; resize: vertical; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    .form-check { display: flex; align-items: center; gap: .5rem; margin-top: .75rem; }
-    .form-check input { width: auto; margin: 0; }
-    .action-row { display: flex; gap: .75rem; margin-top: 1.5rem; flex-wrap: wrap; }
-    dl { display: grid; grid-template-columns: 140px 1fr; gap: .5rem .75rem; }
-    dt { font-weight: 600; color: #555; }
-    code { background: #f0f0f0; padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
-    .filter-bar { display: flex; gap: .75rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: flex-end; }
-    .filter-bar label { margin: 0; font-weight: normal; }
-    .filter-bar input, .filter-bar select { width: auto; min-width: 120px; }
-    .capacity-meter { margin-bottom: 1rem; color: #555; font-size: .9rem; }
-    .pagination { display: flex; gap: .5rem; margin-top: 1.5rem; }
-    .pagination a, .pagination span { padding: .4rem .75rem; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; }
-    .pagination .active { background: #0066cc; color: #fff; border-color: #0066cc; }
-    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 2rem; }
-    .chart-card { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 1rem; }
-    .chart-card h3 { margin: 0 0 1rem; font-size: .95rem; color: #555; }
-  </style>
-</head>
-<body>
-  <nav>
-    <a href="/rsvp/admin/">Dashboard</a>
-    <a href="/rsvp/admin/events">Events</a>
-    <form method="POST" action="/rsvp/admin/logout" style="margin:0">
-      <button style="background:none;border:none;cursor:pointer;color:#333;padding:0">Log Out</button>
-    </form>
-  </nav>
-  ${content}
-</body>
-</html>`
-}
-
 function eventForm(
   event: Record<string, unknown> | null,
+  csrfToken: string,
   override?: Record<string, string>,
 ): string {
+  // Datetime fields are stored as UTC ISO-8601 (C-5 in recommendations.md) but
+  // <input type="datetime-local"> needs a zoneless local wall-clock string —
+  // convert back using the event's own timezone when pre-filling from a saved
+  // event. `override` (a re-rendered form after a validation error) is already
+  // the raw local string the admin typed, so it passes through untouched.
+  const DATETIME_FIELDS = new Set(['start_at', 'end_at', 'opens_at', 'closes_at'])
   const v = (field: string, fallback = '') => {
     if (override?.[field] !== undefined) return escHtml(String(override[field]))
-    if (event?.[field as keyof typeof event] !== undefined)
-      return escHtml(String(event[field as keyof typeof event]))
+    const raw = event?.[field as keyof typeof event]
+    if (raw !== undefined && raw !== null) {
+      if (DATETIME_FIELDS.has(field)) {
+        return escHtml(utcToLocal(String(event?.timezone ?? 'UTC'), String(raw)))
+      }
+      return escHtml(String(raw))
+    }
     return fallback
   }
+  // Fields the Zod schema defaults to true when absent from the POST body
+  // (checkboxes send nothing when unchecked, so "checked by default" here
+  // must mirror eventSchema's z.coerce.boolean().default(...) — see C-2 in
+  // recommendations.md: the old form omitted these controls entirely, so
+  // saving an edit silently reset them to their new-event defaults).
+  const DEFAULT_CHECKED = new Set([
+    'allow_children',
+    'allow_siblings',
+    'allow_parents',
+    'allow_status_choice',
+    'notify_via_email',
+  ])
   const checked = (field: string) => {
     if (override?.[field] !== undefined) return override[field] ? 'checked' : ''
     if (event) return (event as Record<string, unknown>)[field] ? 'checked' : ''
-    return field === 'allow_children' ||
-      field === 'allow_status_choice' ||
-      field === 'notify_via_email'
-      ? 'checked'
-      : ''
+    return DEFAULT_CHECKED.has(field) ? 'checked' : ''
+  }
+  const questionsValue = (): string => {
+    if (override?.questions !== undefined) return escHtml(override.questions)
+    if (event?.questions !== undefined) {
+      try {
+        const parsed = JSON.parse(String(event.questions))
+        return escHtml(
+          Array.isArray(parsed) && parsed.length > 0 ? JSON.stringify(parsed, null, 2) : '',
+        )
+      } catch {
+        return ''
+      }
+    }
+    return ''
   }
   const action = event
     ? `/rsvp/admin/events/${(event as { id: string }).id}/edit`
     : '/rsvp/admin/events'
 
   return `<form method="POST" action="${action}">
+    ${csrfField(csrfToken)}
     <div class="form-row">
       <div>
         <label for="title">Title *</label>
@@ -504,12 +609,38 @@ function eventForm(
         </select>
       </div>
     </div>
+    <div class="form-row">
+      <div>
+        <label for="max_party_size_per_rsvp">Max Party Size per RSVP</label>
+        <input id="max_party_size_per_rsvp" name="max_party_size_per_rsvp" type="number" min="1" max="100" value="${v('max_party_size_per_rsvp', '10')}">
+      </div>
+      <div>
+        <label for="reminder_days_before">Reminder Email — Days Before Event</label>
+        <input id="reminder_days_before" name="reminder_days_before" type="number" min="0" max="365" value="${v('reminder_days_before')}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label for="opens_at">RSVPs Open At (leave blank for immediately)</label>
+        <input id="opens_at" name="opens_at" type="datetime-local" value="${v('opens_at')}">
+      </div>
+      <div>
+        <label for="closes_at">RSVPs Close At (leave blank for never)</label>
+        <input id="closes_at" name="closes_at" type="datetime-local" value="${v('closes_at')}">
+      </div>
+    </div>
     <label for="location_text">Location</label>
     <input id="location_text" name="location_text" maxlength="300" value="${v('location_text')}">
     <label for="wishlist_url">Gift Registry URL</label>
     <input id="wishlist_url" name="wishlist_url" type="url" value="${v('wishlist_url')}">
     <label for="description_html">Description (HTML allowed)</label>
     <textarea id="description_html" name="description_html">${v('description_html')}</textarea>
+    <label for="questions">Custom Questions (JSON array, optional)</label>
+    <textarea id="questions" name="questions" rows="6" placeholder='[{"id":"q1","type":"short_text","label":"T-shirt size","required":false}]'>${questionsValue()}</textarea>
+    <p style="font-size:.85rem;color:#666;margin-top:.25rem">
+      Each question needs <code>id</code>, <code>type</code> (short_text, long_text, boolean, single_select, multi_select), <code>label</code>,
+      optional <code>required</code>, and <code>options</code> (array of strings, for select types). Leave blank for none.
+    </p>
     <div class="form-check">
       <input id="enable_waitlist" name="enable_waitlist" type="checkbox" value="true" ${checked('enable_waitlist')}>
       <label for="enable_waitlist" style="font-weight:normal">Enable waitlist when at capacity</label>
@@ -519,8 +650,32 @@ function eventForm(
       <label for="is_kids_event" style="font-weight:normal">Kids event (show children/siblings/parents fields)</label>
     </div>
     <div class="form-check">
+      <input id="allow_children" name="allow_children" type="checkbox" value="true" ${checked('allow_children')}>
+      <label for="allow_children" style="font-weight:normal">Allow children field</label>
+    </div>
+    <div class="form-check">
+      <input id="allow_siblings" name="allow_siblings" type="checkbox" value="true" ${checked('allow_siblings')}>
+      <label for="allow_siblings" style="font-weight:normal">Allow siblings field</label>
+    </div>
+    <div class="form-check">
+      <input id="allow_parents" name="allow_parents" type="checkbox" value="true" ${checked('allow_parents')}>
+      <label for="allow_parents" style="font-weight:normal">Allow additional-parents field</label>
+    </div>
+    <div class="form-check">
+      <input id="allow_status_choice" name="allow_status_choice" type="checkbox" value="true" ${checked('allow_status_choice')}>
+      <label for="allow_status_choice" style="font-weight:normal">Let guests choose attending / maybe / not attending</label>
+    </div>
+    <div class="form-check">
+      <input id="enable_heuristic_dup_check" name="enable_heuristic_dup_check" type="checkbox" value="true" ${checked('enable_heuristic_dup_check')}>
+      <label for="enable_heuristic_dup_check" style="font-weight:normal">Heuristic duplicate detection (same name + contact within 5 min)</label>
+    </div>
+    <div class="form-check">
       <input id="notify_via_email" name="notify_via_email" type="checkbox" value="true" ${checked('notify_via_email')}>
       <label for="notify_via_email" style="font-weight:normal">Email notifications</label>
+    </div>
+    <div class="form-check">
+      <input id="notify_via_sms" name="notify_via_sms" type="checkbox" value="true" ${checked('notify_via_sms')}>
+      <label for="notify_via_sms" style="font-weight:normal">SMS notifications</label>
     </div>
     <div class="action-row">
       <button type="submit" class="btn btn-primary">${event ? 'Save Changes' : 'Create Event'}</button>
@@ -539,6 +694,11 @@ function chartSection(
     capacity: number | null
   },
 ): string {
+  // JSON-typed <script> islands are inert (never executed by the browser), so
+  // they're unaffected by the CSP script-src allowlist — this is how chart data
+  // reaches the external bootstrap script without an inline <script> block.
+  // See P0-5 in recommendations.md: the previous inline `new Chart(...)` script
+  // was silently dropped by the admin CSP, so no charts ever rendered.
   const data = JSON.stringify(stats)
   return `
     <div class="chart-grid" aria-label="Event statistics charts">
@@ -551,30 +711,6 @@ function chartSection(
         <canvas id="chartCapacity" aria-label="Capacity utilization bar chart" role="img"></canvas>
       </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-    <script>
-      (function() {
-        var stats = ${data};
-        var statusCtx = document.getElementById('chartStatus');
-        new Chart(statusCtx, {
-          type: 'pie',
-          data: {
-            labels: ['Attending', 'Waitlist', 'Not Attending', 'Maybe'],
-            datasets: [{ data: [stats.attending, stats.waitlist, stats.not_attending, stats.maybe],
-              backgroundColor: ['#4caf50','#ff9800','#f44336','#9c27b0'] }]
-          },
-          options: { plugins: { legend: { position: 'bottom' } } }
-        });
-        var capCtx = document.getElementById('chartCapacity');
-        new Chart(capCtx, {
-          type: 'bar',
-          data: {
-            labels: ['Attending', 'Capacity'],
-            datasets: [{ data: [stats.attending, stats.capacity || stats.attending],
-              backgroundColor: ['#4caf50','#e0e0e0'] }]
-          },
-          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-        });
-      })();
-    </script>`
+    <script type="application/json" data-chart-stats>${data}</script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>`
 }

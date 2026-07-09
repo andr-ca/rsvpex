@@ -26,6 +26,7 @@ const PUBLIC_CSP = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
+  "frame-ancestors 'none'",
 ].join('; ')
 
 const ADMIN_CSP = [
@@ -39,7 +40,17 @@ const ADMIN_CSP = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
+  "frame-ancestors 'none'",
 ].join('; ')
+
+// Minimal allow-list: deny everything not explicitly needed by this app.
+const PERMISSIONS_POLICY = [
+  'camera=()',
+  'microphone=()',
+  'geolocation=()',
+  'payment=()',
+  'usb=()',
+].join(', ')
 
 export function securityHeaders() {
   return createMiddleware(async (c, next) => {
@@ -52,5 +63,9 @@ export function securityHeaders() {
     c.res.headers.set('X-Frame-Options', 'DENY')
     c.res.headers.set('X-Content-Type-Options', 'nosniff')
     c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+    // Workers always sit behind Cloudflare TLS termination, so HSTS is safe
+    // to set unconditionally (S-13 in recommendations.md).
+    c.res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    c.res.headers.set('Permissions-Policy', PERMISSIONS_POLICY)
   })
 }

@@ -29,9 +29,9 @@ describe('Phase 1 Smoke Tests', () => {
     expect(body.db).toBe('ok')
   })
 
-  it('SESSION_KV binding is available', async () => {
-    await env.SESSION_KV.put('test:key', 'value', { expirationTtl: 60 })
-    const val = await env.SESSION_KV.get('test:key')
+  it('RATE_LIMIT_KV binding is available', async () => {
+    await env.RATE_LIMIT_KV.put('test:key', 'value', { expirationTtl: 60 })
+    const val = await env.RATE_LIMIT_KV.get('test:key')
     expect(val).toBe('value')
   })
 })

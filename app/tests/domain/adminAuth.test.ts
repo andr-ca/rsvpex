@@ -14,6 +14,7 @@ import {
   createSession,
   getSession,
   deleteSession,
+  hashToken,
 } from '../../src/domain/adminAuth'
 
 const SESSION_EXPIRY_DAYS = 7
@@ -154,8 +155,10 @@ describe('createSession / getSession / deleteSession', () => {
 
     const sessionId = crypto.randomUUID()
     const past = new Date(Date.now() - 1000).toISOString()
+    // Sessions are stored as SHA-256(token) since S-15 — insert the hash
+    // directly to simulate a pre-existing row, same as createSession() would.
     await env.DB.prepare(`INSERT INTO sessions (id, admin_user_id, expires_at) VALUES (?, ?, ?)`)
-      .bind(sessionId, userId, past)
+      .bind(await hashToken(sessionId), userId, past)
       .run()
 
     const session = await getSession(env.DB, sessionId)

@@ -31,9 +31,16 @@ function statusToLevel(status: number): number {
   return 30 // info
 }
 
-/** Redact known PII query parameters. */
+/**
+ * Redact known PII AND bearer-credential query parameters.
+ *
+ * `rid` (RSVP edit token), `t` (private-event access token), and `token`
+ * (admin password-reset token) are all single-use-or-long-lived secrets
+ * that grant access on their own — not just PII (S-2 in recommendations.md:
+ * these previously landed in plaintext in every request log line).
+ */
 export function stripPii(path: string): string {
-  return path.replace(/([?&])(email|phone|dietary)=[^&]*/gi, '$1$2=[REDACTED]')
+  return path.replace(/([?&])(email|phone|dietary|rid|t|token)=[^&]*/gi, '$1$2=[REDACTED]')
 }
 
 /** Build a structured log object (pure, testable). */

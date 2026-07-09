@@ -73,4 +73,35 @@ describe('generateIcs', () => {
     expect(ics).toContain('BEGIN:VCALENDAR')
     expect(ics).toContain('DTSTART')
   })
+
+  // C-17 in recommendations.md: VTIMEZONE generation was rewritten from a
+  // 365-day linear scan to a binary search + per-isolate memoization cache.
+  // These tests pin down that the binary search still finds the correct
+  // DST transitions (America/Toronto: second Sunday of March, first Sunday
+  // of November, every year) rather than just "doesn't throw."
+  describe('VTIMEZONE DST transitions (C-17 in recommendations.md)', () => {
+    it('finds the spring-forward transition in March and fall-back in November', () => {
+      const year = new Date().getFullYear()
+      const ics = generateIcs(baseEvent)
+      const daylightMatch = ics.match(/BEGIN:DAYLIGHT\r?\nDTSTART:(\d{8})T/)
+      const standardMatch = ics.match(/BEGIN:STANDARD\r?\nDTSTART:(\d{8})T/)
+      expect(daylightMatch?.[1].slice(0, 6)).toBe(`${year}03`)
+      expect(standardMatch?.[1].slice(0, 6)).toBe(`${year}11`)
+    })
+
+    it('produces a single STANDARD-only block for a zone with no DST', () => {
+      const ics = generateIcs({ ...baseEvent, eventTimezone: 'Asia/Kolkata' })
+      expect(ics).toContain('TZID:Asia/Kolkata')
+      expect(ics).not.toContain('BEGIN:DAYLIGHT')
+      expect(ics).toContain('BEGIN:STANDARD')
+    })
+
+    it('is memoized: repeated calls for the same timezone return identical VTIMEZONE content', () => {
+      const ics1 = generateIcs(baseEvent)
+      const ics2 = generateIcs({ ...baseEvent, rsvpId: 'different-rsvp-id' })
+      const extractVtimezone = (s: string) =>
+        s.slice(s.indexOf('BEGIN:VTIMEZONE'), s.indexOf('END:VTIMEZONE'))
+      expect(extractVtimezone(ics1)).toBe(extractVtimezone(ics2))
+    })
+  })
 })
