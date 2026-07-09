@@ -26,9 +26,20 @@ const app = new Hono<{ Bindings: Env }>()
 // Phase 10: Global middleware — outermost first
 app.use('*', requestLogger())
 app.use('*', securityHeaders())
-app.use('*', csrfProtection())
 
+// methodOverride must run BEFORE csrfProtection: it unconditionally clones
+// the raw request body (hono/method-override always calls c.req.raw.clone()
+// on any non-GET request) to check for a `_method` override field. clone()
+// requires the underlying stream not already be locked to a reader — if
+// csrfProtection ran first and called c.req.parseBody() to read the `_csrf`
+// form field (which it does on every admin mutating POST that doesn't send
+// the X-CSRF-Token header, i.e. every real browser form submission), the
+// stream is already locked and methodOverride's clone() throws
+// "ReadableStream is currently locked to a reader" — a crash Hono's
+// synchronous app.fetch()-based integration tests never exercise, only a
+// real streamed HTTP body under `wrangler dev` does.
 app.use('*', methodOverride({ app }))
+app.use('*', csrfProtection())
 
 app.route('/rsvp', healthRouter)
 

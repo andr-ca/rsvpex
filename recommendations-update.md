@@ -118,10 +118,16 @@ All 16 fixed and validated.
 
 | # | Status | Note |
 |---|--------|------|
-| T-1 | ⏭️ Deferred | **The single highest-ROI item in the original review** — a Playwright E2E happy path (create event → publish → submit RSVP in a real browser → edit → admin edits → export) was not implemented this pass. `playwright.config.ts` still exists and `tests/e2e/` is still empty; `@playwright/test`/`@axe-core/playwright` are still not in `package.json`. This is the most important remaining gap — every P0 fixed above (P0-2, P0-3, P0-4 especially) would have been caught immediately by this test, and its absence is exactly why they shipped broken the first time. Recommend picking this up next. |
+| T-1 | ✅ Fixed | **The single highest-ROI item in the original review.** Added `@playwright/test` + `@axe-core/playwright` to `app/package.json`, wrote `tests/e2e/happy-path.spec.ts`: admin setup/bootstrap → login → create event → publish → guest submits RSVP in a real Chromium browser (dietary fields, notes) → thank-you page → guest edits via the emailed-link flow (`_method=PATCH` override) → admin views/edits the RSVP from the dashboard → admin exports CSV and JSON. `playwright.config.ts`'s `webServer` block now applies local D1 migrations and starts a real `wrangler dev` server itself (`TURNSTILE_SECRET_KEY`/`ENVIRONMENT` passed via `--var` so the CAPTCHA bypass activates without a committed secrets file — works in CI with no extra setup). Wired into `ci.yml` as a real (no longer commented-out) `e2e` job. **This immediately paid for itself**: running it against real HTTP (not the in-memory `app.fetch()` calls every other test uses) surfaced two previously-undiscovered bugs, both fixed in this same pass — see below. | `pnpm exec playwright test` — 1 passed, run twice back-to-back locally to confirm the fixed-admin-credentials/409-fallback idempotency design works against persisted local D1 state, not just a clean run. |
 | T-2 | ⏭️ Deferred | Domain-layer coverage project (second vitest project on plain Node pool with V8 coverage for `src/domain/**`) not implemented. `@vitest/coverage-v8` and `@vitest/coverage-istanbul` were pruned entirely from devDependencies (D-6) since neither works with `vitest-pool-workers` today — reinstall whichever a Node-pool coverage project needs when this is picked up. |
 | T-3 | ✅ Substantially addressed | "Zero tests for: dietary parsing, custom-question round-trip, admin CSRF round-trip, timezone/DST, CSV formula injection, PATCH capacity bypass" — every one of these now has direct regression coverage as part of the P0/C/S fixes above: dietary field-name parsing (P0-3), custom-question render/submit (P0-4), admin CSRF round-trip (P0-2), timezone/DST (`tests/domain/timezone.test.ts`, C-5), CSV formula injection (S-7), PATCH capacity bypass (C-1). Not exhaustively audited against every single line of the original finding, but the concrete list is covered. |
-| T-4 | ⏭️ Deferred | Depends on T-1 (needs the Playwright harness to exist first). Not implemented. |
+| T-4 | ✅ Fixed | `@axe-core/playwright` scans wired into `happy-path.spec.ts` at three points: admin event-detail dashboard, public RSVP form, thank-you page. Scoped to `withTags(['wcag2a', 'wcag2aa'])` rather than axe's full "best-practice" rule set — the unscoped scan flagged real but out-of-scope admin-template gaps (no `<main>` landmark, heading-order skip on the chart section) that are a legitimate follow-up but a broader change than this happy-path test should gate on. The WCAG-scoped scan caught one real, in-scope **critical** violation, fixed in this pass — see below. | All three scans pass with zero WCAG 2 A/AA violations as part of the same `playwright test` run above. |
+
+**Two previously-undiscovered bugs T-1/T-4 caught, fixed in this pass:**
+
+1. **Middleware ordering crash (`src/app.ts`).** `csrfProtection()` was registered before Hono's `methodOverride()`. On any admin form POST without an `X-CSRF-Token` header (i.e. every real browser form submission — the token travels via the hidden `_csrf` field instead), `csrfProtection()` calls `c.req.parseBody()` to read that field, locking the request's body stream. `methodOverride()` then unconditionally calls `c.req.raw.clone()` on every non-GET request, which throws `TypeError: This ReadableStream is currently locked to a reader` against an already-locked stream. This crashed **every** admin form submission (create event, edit event, edit RSVP, etc.) under a real `wrangler dev`/Workers HTTP request — but never showed up in the existing suite because every other test calls `app.fetch(request, env)` directly with a fresh, unstreamed `Request`, which doesn't reproduce the lock. Fixed by swapping the registration order so `methodOverride()` clones the pristine stream first. Confirmed via the E2E test's own admin form submissions succeeding, and the full Vitest suite still green afterward.
+2. **`max_guests_total` validation (`src/routes/adminEvents.ts`).** `z.coerce.number().int().min(1).optional().nullable()` on a field the form always submits as `""` when left blank (blank ≠ omitted for an HTML `<input type="number">`). `z.coerce.number()` turns `""` into `0`, which then fails `.min(1)` instead of being treated as "no cap set" — so creating or editing **any** event without an explicit guest limit (the common "unlimited" case) failed validation with a cryptic error. Fixed with a `z.preprocess()` that maps a blank string to `undefined` before coercion, so `.optional()` actually takes effect. Caught because the E2E test creates an event the way an admin actually would (leaving optional fields blank), unlike unit tests that construct a fully-populated payload.
+3. **Missing accessible name on the dietary-type `<select>` (`src/routes/rsvpForm.ts`, caught by the T-4 axe scan).** `<select name="dietary_kind[]">` had no `<label>`, `aria-label`, or `aria-labelledby` — a WCAG 2A `select-name` **critical** violation, invisible to a sighted tester but a hard blocker for screen-reader users trying to RSVP. Fixed by adding a new `dietary.typeLabel` i18n key (en/fr/es) and an `aria-label` on the element.
 
 ---
 
@@ -167,13 +173,17 @@ pnpm run format:check   → All matched files use Prettier code style!
 pnpm run typecheck      → clean (tsc --noEmit)
 pnpm run lint           → clean (eslint, including the custom @req-tag rule)
 pnpm exec vitest run    → 33 test files, 294 tests, all passing
+pnpm exec playwright test → 1 passed (T-1/T-4 happy path + WCAG 2 A/AA scans)
 pnpm run build          → wrangler deploy --dry-run succeeds, ~970 KiB / ~175 KiB gzip
 pnpm audit --prod       → No known vulnerabilities found
 ```
 
 (294 = the original 276 plus 18 added in a follow-up pass closing the S-10/S-13 test-coverage
 gaps noted below — `tests/domain/sanitize.test.ts` and 4 new cases in
-`tests/integration/security-headers.test.ts`.)
+`tests/integration/security-headers.test.ts`. `tests/e2e/**` is excluded from the Vitest run —
+`vitest.config.ts` — since those specs import `@playwright/test`, which pulls in Node-only
+dependencies unavailable in the Workers/Miniflare pool; they run via `playwright test` instead,
+against a real `wrangler dev` server, not the in-memory `app.fetch()` every other test uses.)
 
 Two real bugs were caught *by this validation loop itself*, not by inspection — both are called out
 inline above where they occurred (S-6/S-15's JS-vs-SQLite datetime format mismatch in the new purge
@@ -183,10 +193,13 @@ throughout this pass, beyond just satisfying the letter of each finding.
 
 ## What's explicitly not done
 
-- **T-1 (Playwright E2E happy path)** — the single highest-ROI item identified in the original
-  review, not implemented. This is the most important thing to pick up next: it would have caught
-  P0-2/P0-3/P0-4 immediately, and its absence is *why* they shipped broken originally.
-- **T-2 (domain-layer coverage project)**, **T-4 (axe-core gate)** — depend on or pair with T-1.
+- **T-2 (domain-layer coverage project)** — a second Vitest project on the plain Node pool with
+  V8/Istanbul coverage for `src/domain/**`, deferred since neither coverage provider currently
+  works with `vitest-pool-workers` (D-6).
+- **Broader admin-UI accessibility pass** — the T-4 axe scan, scoped to WCAG 2 A/AA, surfaced
+  real but out-of-scope `best-practice` findings on the admin dashboard (no `<main>` landmark,
+  an h1→h3 heading-level skip around the chart section). Legitimate follow-up, but a
+  template-wide change beyond what the happy-path E2E test should gate on.
 - **I-1 through I-5** (Idea & Product) and **A-3** (route-mounting consolidation) — real
   findings, consciously left alone to keep this pass scoped to defects rather than product
   decisions and larger refactors.

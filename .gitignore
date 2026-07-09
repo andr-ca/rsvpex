@@ -21,3 +21,7 @@ app/migrations/meta/
 # Test coverage
 coverage/
 app/coverage/
+
+# Playwright E2E artifacts
+app/playwright-report/
+app/test-results/

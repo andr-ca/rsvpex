@@ -27,7 +27,10 @@ export default defineConfig(async () => {
       }),
     ],
     test: {
-      exclude: ['eslint-rules/**', 'node_modules/**'],
+      // tests/e2e/**: Playwright specs, run via `playwright test` (playwright.config.ts),
+      // not Vitest — they import @playwright/test, which pulls in Node-only
+      // deps (node:child_process) unavailable in the Workers/Miniflare pool.
+      exclude: ['eslint-rules/**', 'node_modules/**', 'tests/e2e/**'],
       setupFiles: ['./tests/apply-migrations.ts'],
       coverage: {
         // NOTE: Coverage instrumentation is not currently supported inside

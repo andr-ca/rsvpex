@@ -465,7 +465,7 @@ function renderDietaryRow(
 ): string {
   return `
           <div class="dietary-row">
-            <select name="dietary_kind[]">
+            <select name="dietary_kind[]" aria-label="${escHtml(t('dietary.typeLabel', locale))}">
               <option value="">${escHtml(t('dietary.select', locale))}</option>
               ${renderDietaryOptions(locale, entry?.kind)}
             </select>

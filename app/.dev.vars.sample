@@ -32,3 +32,11 @@ SETUP_SECRET=
 # (ip_hash column, rate limiter keys). Falls back to a fixed in-code pepper
 # if unset — set this for real before deploying (see domain/tokens.ts).
 IP_HASH_KEY=
+
+# ── Local/E2E environment override ────────────────────────
+# wrangler.jsonc's `vars` block hardcodes ENVIRONMENT=production. Set this
+# to anything else (e.g. "test") for local `wrangler dev` runs so the
+# TURNSTILE_SECRET_KEY=test-secret bypass above actually activates — the
+# bypass requires BOTH conditions (see middleware/turnstile.ts, S-1 in
+# recommendations.md). Required for `npm run test:e2e`.
+ENVIRONMENT=

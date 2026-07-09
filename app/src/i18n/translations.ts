@@ -56,6 +56,7 @@ export const translations: Record<SupportedLocale, TranslationTable> = {
     'dietary.dairyFree': 'Dairy-free',
     'dietary.other': 'Other',
     'dietary.detailsPlaceholder': 'Details (optional)',
+    'dietary.typeLabel': 'Dietary restriction type',
 
     // Edit mode
     'edit.banner': 'Editing your RSVP',
@@ -141,6 +142,7 @@ export const translations: Record<SupportedLocale, TranslationTable> = {
     'dietary.dairyFree': 'Sans produits laitiers',
     'dietary.other': 'Autre',
     'dietary.detailsPlaceholder': 'Détails (facultatif)',
+    'dietary.typeLabel': 'Type de restriction alimentaire',
 
     'edit.banner': 'Modification de votre RSVP',
     'edit.invalidLink': 'Lien de modification invalide',
@@ -225,6 +227,7 @@ export const translations: Record<SupportedLocale, TranslationTable> = {
     'dietary.dairyFree': 'Sin lácteos',
     'dietary.other': 'Otro',
     'dietary.detailsPlaceholder': 'Detalles (opcional)',
+    'dietary.typeLabel': 'Tipo de restricción alimentaria',
 
     'edit.banner': 'Editando tu RSVP',
     'edit.invalidLink': 'Enlace de edición no válido',

@@ -28,11 +28,18 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  // Start wrangler dev server before tests
-  // webServer: {
-  //   command: 'npm run dev',
-  //   url: 'http://localhost:8787',
-  //   reuseExistingServer: !process.env.CI,
-  //   timeout: 30000,
-  // },
+  // Applies local D1 migrations, then starts wrangler dev with the two vars
+  // the E2E test needs overridden from wrangler.jsonc's committed
+  // ENVIRONMENT=production (see middleware/turnstile.ts, middleware/rateLimit.ts —
+  // S-1 in recommendations.md gates the test bypass on BOTH
+  // TURNSTILE_SECRET_KEY=test-secret AND a non-production ENVIRONMENT).
+  // Passed via --var (highest precedence) so this works in CI without a
+  // checked-in .dev.vars file; a local .dev.vars still works for `npm run dev`.
+  webServer: {
+    command:
+      'npm run migrate:local && wrangler dev --var TURNSTILE_SECRET_KEY:test-secret --var ENVIRONMENT:test',
+    url: 'http://localhost:8787/rsvp/healthz',
+    reuseExistingServer: !process.env.CI,
+    timeout: 60000,
+  },
 })

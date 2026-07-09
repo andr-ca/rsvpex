@@ -92,7 +92,16 @@ const eventSchema = z.object({
   enable_waitlist: z.coerce.boolean().optional().default(false),
   enable_heuristic_dup_check: z.coerce.boolean().optional().default(false),
   locale: z.enum(['en', 'fr', 'es']).default('en'),
-  max_guests_total: z.coerce.number().int().min(1).optional().nullable(),
+  // A blank <input type="number"> submits "" (not omitted), and z.coerce.number()
+  // turns "" into 0 — which then fails .min(1) instead of being treated as
+  // "no cap set". Previously undiscovered: this made "unlimited guests" (the
+  // common case of leaving this field blank) impossible — every such event
+  // creation/edit failed validation. preprocess() maps blank to undefined
+  // first so .optional() actually takes effect.
+  max_guests_total: z.preprocess(
+    (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+    z.coerce.number().int().min(1).optional().nullable(),
+  ),
   max_party_size_per_rsvp: z.coerce.number().int().min(1).max(100).default(10),
   opens_at: z.string().optional(),
   closes_at: z.string().optional(),
