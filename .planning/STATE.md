@@ -83,7 +83,7 @@ None
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260708-uot | Full project review (idea, architecture, implementation, CI/CD) → recommendations.md | 2026-07-09 | e188eca | [260708-uot-full-project-review-idea-architecture-im](./quick/260708-uot-full-project-review-idea-architecture-im/) |
-| 260708-v1c | Addressed every recommendations.md finding (P0/C/S/D/H) → recommendations-update.md | 2026-07-09 | pending | [260708-v1c-address-recommendations-md-findings-impl](./quick/260708-v1c-address-recommendations-md-findings-impl/) |
+| 260708-v1c | Addressed every recommendations.md finding (P0/C/S/D/H) → recommendations-update.md | 2026-07-09 | 2cfa768 | [260708-v1c-address-recommendations-md-findings-impl](./quick/260708-v1c-address-recommendations-md-findings-impl/) |
 
 ---
 
