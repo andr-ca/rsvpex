@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'fix/**', 'feat/**']
+    paths:
+      - 'app/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/ci.yml'
+
+# D-4 in recommendations.md: lint/typecheck/test/build now run as independent
+# parallel jobs (previously a strict `needs:` chain, ~3x wall-clock for no
+# reason — none of these checks depend on another's output) and PR-triggering
+# paths now include the root pnpm-lock.yaml/pnpm-workspace.yaml, which were
+# previously invisible to CI despite being able to break every job.
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run format:check
+      - run: pnpm run lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # NOTE: --coverage is omitted because @cloudflare/vitest-pool-workers
+      # does not support V8/Istanbul instrumentation (Workers runtime lacks
+      # node:inspector). Coverage thresholds are documented in vitest.config.ts
+      # for when the ecosystem adds support.
+      - run: pnpm exec vitest run
+
+  build:
+    name: Build (dry-run)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # D-4: bundle-size + binding-resolution gate. `--dry-run` doesn't need
+      # Cloudflare credentials or real resource IDs (PLACEHOLDER is fine) —
+      # it only bundles the Worker and reports what it *would* deploy.
+      - run: pnpm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # D-5 in recommendations.md: gate on known vulnerabilities in
+      # production dependencies (devDependencies excluded — build-time-only
+      # tooling isn't part of the deployed Worker's attack surface).
+      - run: pnpm audit --prod
+
+  # T-1/T-4 in recommendations.md: Playwright + axe-core E2E happy path.
+  # playwright.config.ts's webServer block applies local D1 migrations and
+  # starts `wrangler dev` itself with the TURNSTILE_SECRET_KEY/ENVIRONMENT
+  # overrides the test bypass needs — no separate server-start step required.
+  e2e:
+    name: E2E Tests
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright test
+        env:
+          CI: true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: app/playwright-report/
+          retention-days: 14

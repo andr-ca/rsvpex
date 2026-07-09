@@ -1,0 +1,42 @@
+# RSVPex App — Wrangler local secrets reference
+# Copy to .dev.vars for local development (never commit .dev.vars)
+# Production: wrangler secret put <KEY>
+
+# ── Email (Resend) ───────────────────────────────────────
+RESEND_API_KEY=
+ADMIN_FROM_EMAIL=noreply@yourdomain.com
+
+# ── SMS (Twilio) ─────────────────────────────────────────
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=
+
+# ── CAPTCHA (Cloudflare Turnstile) ───────────────────────
+TURNSTILE_SECRET_KEY=
+
+# ── Password hashing ─────────────────────────────────────
+# Random 32-byte hex string; pepper mixed into every argon2id hash so a
+# leaked admin_users table alone (without this secret) can't be cracked
+# offline. Falls back to a fixed in-code pepper if unset — set this for
+# real before deploying (see domain/adminAuth.ts).
+ARGON2_PEPPER=
+
+# ── First-run admin setup gate ────────────────────────────
+# Optional. If set, POST /rsvp/admin/setup requires this value in the
+# setup_secret field — closes the window where anyone who finds the
+# /setup URL before you do can create the first admin account.
+SETUP_SECRET=
+
+# ── IP hashing ─────────────────────────────────────────────
+# Random 32-byte hex string; HMAC key for hashing guest IPs before storing
+# (ip_hash column, rate limiter keys). Falls back to a fixed in-code pepper
+# if unset — set this for real before deploying (see domain/tokens.ts).
+IP_HASH_KEY=
+
+# ── Local/E2E environment override ────────────────────────
+# wrangler.jsonc's `vars` block hardcodes ENVIRONMENT=production. Set this
+# to anything else (e.g. "test") for local `wrangler dev` runs so the
+# TURNSTILE_SECRET_KEY=test-secret bypass above actually activates — the
+# bypass requires BOTH conditions (see middleware/turnstile.ts, S-1 in
+# recommendations.md). Required for `npm run test:e2e`.
+ENVIRONMENT=

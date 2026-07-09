@@ -1,7 +1,13 @@
 # Cloudflare Pages configuration
 name = "rsvpex-landing"
 
-# Files and directories to exclude from deployment
+# NOTE (D-2 in recommendations.md): `[env.production] exclude` below is NOT
+# honored by `wrangler pages deploy <dir>` direct-upload deploys — Wrangler
+# only reads this key for the Pages Git-integration build path, which this
+# repo doesn't use. The actual deploy (.github/workflows/deploy.yml) instead
+# rsyncs a filtered copy into static-web-dist/ and deploys that. This list is
+# kept as living documentation of what's intentionally excluded, and for
+# anyone running `wrangler pages deploy` by hand locally.
 [env.production]
 exclude = [
   ".git",

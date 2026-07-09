@@ -27,6 +27,30 @@ jobs:
       - name: Install Wrangler
         run: npm install -g wrangler
 
+      # D-2 in recommendations.md: `wrangler pages deploy` direct-upload does
+      # NOT honor the `[env.production] exclude` list in static-web/wrangler.toml
+      # — that key isn't read by direct-upload deploys at all, only by the
+      # (unused here) Pages Git-integration build path. Deploying the raw
+      # static-web/ directory therefore publishes specs/, .specify/, internal
+      # runbooks (DEPLOY_NOW.md, GITEA_ACTIONS_SETUP.md), etc. Build a
+      # deploy-only copy instead and deploy that.
+      - name: Build deployable static site (excludes internal docs/specs)
+        run: |
+          rm -rf static-web-dist
+          mkdir -p static-web-dist
+          rsync -a static-web/ static-web-dist/ \
+            --exclude='.git*' \
+            --exclude='.env*' \
+            --exclude='.claude' \
+            --exclude='.gemini' \
+            --exclude='.specify' \
+            --exclude='.wrangler' \
+            --exclude='specs' \
+            --exclude='*.md' \
+            --exclude='wrangler.toml' \
+            --exclude='package*.json' \
+            --exclude='*.lock'
+
       - name: Inject Web3Forms key
         if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         env:
@@ -41,7 +65,7 @@ jobs:
           ESCAPED_KEY=${ESCAPED_KEY//&/\\&}
           ESCAPED_KEY=${ESCAPED_KEY//\//\\/}
 
-          sed -i "s/{{WEB3FORMS_ACCESS_KEY}}/${ESCAPED_KEY}/g" static-web/index.html
+          sed -i "s/{{WEB3FORMS_ACCESS_KEY}}/${ESCAPED_KEY}/g" static-web-dist/index.html
 
       - name: Ensure Cloudflare Pages project exists
         if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
@@ -54,7 +78,7 @@ jobs:
 
       - name: Deploy (Production — push to main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: wrangler pages deploy static-web --project-name=rsvpex-landing --branch=main
+        run: wrangler pages deploy static-web-dist --project-name=rsvpex-landing --branch=main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -62,7 +86,7 @@ jobs:
       - name: Deploy (PR Preview)
         # Same-repo PRs only; fork PRs do not receive repository secrets.
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        run: wrangler pages deploy static-web --project-name=rsvpex-landing --branch=pr-${{ github.event.pull_request.number }}
+        run: wrangler pages deploy static-web-dist --project-name=rsvpex-landing --branch=pr-${{ github.event.pull_request.number }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
