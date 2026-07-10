@@ -2,7 +2,7 @@
 /**
  * Admin login — GET /rsvp/admin/login (form), POST /rsvp/admin/login (submit)
  *
- * @req ADMIN-01 — argon2id verification; lockout after 5 failed attempts (15 min)
+ * @req ADMIN-01 — PBKDF2 verification; lockout after 5 failed attempts (15 min)
  * @req SEC-03 — HttpOnly SameSite=Lax session cookie
  */
 import { Hono } from 'hono'
@@ -68,7 +68,7 @@ adminLoginRouter.get('/login', (c) => {
 })
 
 // Fixed-format dummy hash (S-5 in recommendations.md): verifying against this runs
-// the same argon2id cost as a real user, so response timing can't be used to tell
+// the same PBKDF2 cost as a real user, so response timing can't be used to tell
 // whether an email has an admin account. The value never matches any real password —
 // it's just a well-formed "salt_hex:hash_hex" string for verifyPassword() to chew on.
 const DUMMY_HASH = `${'00'.repeat(32)}:${'11'.repeat(32)}`
@@ -96,7 +96,7 @@ adminLoginRouter.post('/login', adminAuthRateLimit(), async (c) => {
     }>()
 
   // Don't reveal whether user exists — always run the same checks and the
-  // same argon2id cost (verifyPassword against DUMMY_HASH) either way.
+  // same PBKDF2 cost (verifyPassword against DUMMY_HASH) either way.
   if (!user || !user.is_active) {
     await verifyPassword(password, DUMMY_HASH, c.env.ARGON2_PEPPER)
     return c.redirect(`/rsvp/admin/login?error=invalid${nextParam}`, 302)

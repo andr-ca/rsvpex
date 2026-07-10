@@ -1,6 +1,6 @@
 // app/tests/domain/adminAuth.test.ts
 /**
- * @req ADMIN-01 — argon2id login; lockout after 5 failed attempts
+ * @req ADMIN-01 — PBKDF2 login; lockout after 5 failed attempts
  * @req ADMIN-02 — session creation, session lookup, session deletion
  */
 import { env } from 'cloudflare:test'
@@ -34,11 +34,11 @@ describe('hashPassword / verifyPassword', () => {
     expect(ok).toBe(false)
   })
 
-  it('completes within 5000ms (argon2id CPU budget; Miniflare is slower than prod)', async () => {
+  it('completes within 2000ms (PBKDF2 is hardware-accelerated; Miniflare is still slower than prod)', async () => {
     const start = Date.now()
     await hashPassword('benchmark-password')
     const elapsed = Date.now() - start
-    expect(elapsed).toBeLessThan(5000) // Miniflare ~1.5s; prod Workers target is <200ms CPU
+    expect(elapsed).toBeLessThan(2000)
   })
 })
 

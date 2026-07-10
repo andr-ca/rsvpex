@@ -162,7 +162,7 @@ describe('POST /rsvp/admin/login', () => {
       env,
     )
     expect(res.status).toBe(423)
-    // argon2id takes ~1.5s per call in Miniflare; 5 failed = ~7.5s
+    // PBKDF2 (600k iterations) takes well under 1s per call even in Miniflare
   }, 30000)
 })
 

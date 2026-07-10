@@ -5,7 +5,7 @@
  * Creates the first admin user. Returns 409 if any admin user already exists.
  * This endpoint is open (no auth required) but safe: it is a no-op after first use.
  *
- * @req ADMIN-01 — admin user creation with argon2id password hash
+ * @req ADMIN-01 — admin user creation with PBKDF2 password hash
  */
 import { Hono } from 'hono'
 import { z } from 'zod'
