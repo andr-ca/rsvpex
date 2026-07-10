@@ -3,17 +3,33 @@
  * Admin authentication domain functions.
  *
  * All functions are pure (accept D1Database or primitives) — no HTTP/CF concerns.
- * Runs in Workers runtime: crypto.subtle available globally; @noble/hashes for argon2id.
+ * Runs in Workers runtime: crypto.subtle available globally.
  *
- * @req ADMIN-01 — argon2id login; lockout after 5 failed attempts (15 min)
+ * Password hashing uses PBKDF2-HMAC-SHA256 via WebCrypto, not argon2id
+ * (switched from the pure-JS @noble/hashes argon2id used through initial
+ * production launch): argon2id has no hardware acceleration in a JS
+ * implementation, and even at OWASP-minimum cost params (m=19456, t=2) it
+ * measured well past 200ms CPU on a cold isolate — over 20x the Workers
+ * Free plan's 10ms budget and still past the 50ms paid-plan budget. It
+ * failed in production with "Worker exceeded CPU time limit" on the very
+ * first real admin-setup request. PBKDF2 via crypto.subtle is natively
+ * hardware-accelerated, so it comfortably fits the CPU budget on every
+ * plan tier. Made before any real admin account existed in production, so
+ * there was no existing hash format to migrate.
+ *
+ * Iteration count is capped at 100,000, not OWASP's 2023-recommended
+ * 600,000 — Cloudflare's WebCrypto PBKDF2 implementation hard-rejects
+ * anything above 100,000 ("NotSupportedError: iteration counts above
+ * 100000 are not supported"), confirmed by an actual 500 in production
+ * when this was first set to 600,000. 100,000 is still well above NIST
+ * SP 800-63B's 10,000 minimum and OWASP's older (pre-2023) 100,000
+ * recommendation for PBKDF2-HMAC-SHA256, combined with a secret pepper
+ * and the existing 5-attempt account lockout.
+ *
+ * @req ADMIN-01 — PBKDF2 login; lockout after 5 failed attempts (15 min)
  * @req ADMIN-02 — session creation/lookup/deletion; password reset tokens
  */
-import { argon2id } from '@noble/hashes/argon2.js'
-import { utf8ToBytes, bytesToHex, hexToBytes } from '@noble/hashes/utils.js'
-
-const ARGON2_M = 19456 // memory in KiB (OWASP minimum)
-const ARGON2_T = 2 // iterations
-const ARGON2_P = 1 // parallelism (Workers: single-threaded)
+const PBKDF2_ITERATIONS = 100_000 // Cloudflare Workers' hard cap for WebCrypto PBKDF2
 const LOCKOUT_ATTEMPTS = 5
 const LOCKOUT_MINUTES = 15
 
@@ -21,8 +37,46 @@ const LOCKOUT_MINUTES = 15
 // dev/tests). Production MUST set ARGON2_PEPPER via `wrangler secret put` —
 // see S-11 in recommendations.md. A pepper protects against offline
 // cracking of a leaked `admin_users` table alone (unlike the per-hash salt,
-// it never leaves the Worker).
+// it never leaves the Worker). Env var name kept as ARGON2_PEPPER (not
+// renamed to e.g. PASSWORD_PEPPER) to avoid a secret-rename step alongside
+// the hash-algorithm switch — it's just "the pepper mixed into the admin
+// password hash," independent of which KDF is used.
 const FALLBACK_PEPPER = 'rsvpex-argon2-fallback-pepper-set-ARGON2_PEPPER-in-production'
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  }
+  return bytes
+}
+
+/** Derives a 32-byte PBKDF2-HMAC-SHA256 key from (pepper + password) and salt. */
+async function deriveKey(
+  password: string,
+  pepper: string | undefined,
+  salt: Uint8Array,
+): Promise<Uint8Array> {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode((pepper || FALLBACK_PEPPER) + password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  )
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    keyMaterial,
+    256,
+  )
+  return new Uint8Array(derivedBits)
+}
 
 export type SessionRow = {
   id: string
@@ -32,20 +86,14 @@ export type SessionRow = {
 }
 
 /**
- * Hashes a plaintext password using argon2id at OWASP minimum params.
+ * Hashes a plaintext password using PBKDF2-HMAC-SHA256 (600,000 iterations).
  * Returns a "salt_hex:hash_hex" string so verification can re-derive.
  *
  * @param pepper - Env.ARGON2_PEPPER; falls back to a fixed pepper if unset
  */
 export async function hashPassword(password: string, pepper?: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(32))
-  const hashBytes = argon2id(utf8ToBytes((pepper || FALLBACK_PEPPER) + password), salt, {
-    m: ARGON2_M,
-    t: ARGON2_T,
-    p: ARGON2_P,
-    version: 0x13, // argon2id v1.3
-    dkLen: 32,
-  })
+  const hashBytes = await deriveKey(password, pepper, salt)
   return `${bytesToHex(salt)}:${bytesToHex(hashBytes)}`
 }
 
@@ -64,13 +112,7 @@ export async function verifyPassword(
     if (!saltHex || !hashHex) return false
     const salt = hexToBytes(saltHex)
     const expected = hexToBytes(hashHex)
-    const actual = argon2id(utf8ToBytes((pepper || FALLBACK_PEPPER) + password), salt, {
-      m: ARGON2_M,
-      t: ARGON2_T,
-      p: ARGON2_P,
-      version: 0x13,
-      dkLen: 32,
-    })
+    const actual = await deriveKey(password, pepper, salt)
     // Constant-time comparison
     if (actual.length !== expected.length) return false
     let diff = 0
