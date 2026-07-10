@@ -13,15 +13,23 @@
  * Free plan's 10ms budget and still past the 50ms paid-plan budget. It
  * failed in production with "Worker exceeded CPU time limit" on the very
  * first real admin-setup request. PBKDF2 via crypto.subtle is natively
- * hardware-accelerated, so OWASP's 2023-recommended 600,000 iterations
- * comfortably fits the CPU budget on every plan tier. Made before any real
- * admin account existed in production, so there was no existing hash
- * format to migrate.
+ * hardware-accelerated, so it comfortably fits the CPU budget on every
+ * plan tier. Made before any real admin account existed in production, so
+ * there was no existing hash format to migrate.
+ *
+ * Iteration count is capped at 100,000, not OWASP's 2023-recommended
+ * 600,000 — Cloudflare's WebCrypto PBKDF2 implementation hard-rejects
+ * anything above 100,000 ("NotSupportedError: iteration counts above
+ * 100000 are not supported"), confirmed by an actual 500 in production
+ * when this was first set to 600,000. 100,000 is still well above NIST
+ * SP 800-63B's 10,000 minimum and OWASP's older (pre-2023) 100,000
+ * recommendation for PBKDF2-HMAC-SHA256, combined with a secret pepper
+ * and the existing 5-attempt account lockout.
  *
  * @req ADMIN-01 — PBKDF2 login; lockout after 5 failed attempts (15 min)
  * @req ADMIN-02 — session creation/lookup/deletion; password reset tokens
  */
-const PBKDF2_ITERATIONS = 600_000 // OWASP 2023 minimum for PBKDF2-HMAC-SHA256
+const PBKDF2_ITERATIONS = 100_000 // Cloudflare Workers' hard cap for WebCrypto PBKDF2
 const LOCKOUT_ATTEMPTS = 5
 const LOCKOUT_MINUTES = 15
 
