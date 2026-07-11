@@ -28,13 +28,23 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  // Applies local D1 migrations, then starts wrangler dev with the two vars
+  // Applies local D1 migrations, then starts wrangler dev with the vars
   // the E2E test needs overridden from wrangler.jsonc's committed
   // ENVIRONMENT=production (see middleware/turnstile.ts, middleware/rateLimit.ts —
   // S-1 in recommendations.md gates the test bypass on BOTH
   // TURNSTILE_SECRET_KEY=test-secret AND a non-production ENVIRONMENT).
   // Passed via --var (highest precedence) so this works in CI without a
   // checked-in .dev.vars file; a local .dev.vars still works for `npm run dev`.
+  //
+  // DEPLOYMENT_DOMAIN is also overridden to localhost: several routes build
+  // absolute links from it (password-reset email links, admin-invite links —
+  // adminPasswordReset.ts, adminInvite.ts) so an attacker can't poison the
+  // link by spoofing the Host header (C-10 in recommendations.md). Without
+  // this override those links point at wrangler.jsonc's committed production
+  // value (https://rsvpex.com) even during local E2E runs — a test that
+  // extracts and navigates to one of those links (e.g. multi-user-admin.spec.ts's
+  // invite-accept flow) would silently make a real request against production
+  // instead of the local dev server.
   //
   // --local-upstream is required once wrangler.jsonc has a `routes` entry:
   // wrangler dev's local-upstream host defaults to the route's zone
@@ -47,7 +57,7 @@ export default defineConfig({
   // description of the flag ("defaults to dev.host or route").
   webServer: {
     command:
-      'npm run migrate:local && wrangler dev --var TURNSTILE_SECRET_KEY:test-secret --var ENVIRONMENT:test --local-upstream localhost:8787',
+      'npm run migrate:local && wrangler dev --var TURNSTILE_SECRET_KEY:test-secret --var ENVIRONMENT:test --var DEPLOYMENT_DOMAIN:http://localhost:8787 --local-upstream localhost:8787',
     url: 'http://localhost:8787/rsvp/healthz',
     reuseExistingServer: !process.env.CI,
     timeout: 60000,

@@ -192,7 +192,7 @@ function renderActions(admin: AdminUser, currentUserId: string, csrfToken: strin
   const isOwner = admin.role === 'owner'
 
   if (isSelf) {
-    return '<em style="color:#999;">(self)</em>'
+    return '<em style="color:#555;">(self)</em>'
   }
 
   let actions = ''
