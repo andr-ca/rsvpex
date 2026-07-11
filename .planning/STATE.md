@@ -86,6 +86,7 @@ None
 | 260708-v1c | Addressed every recommendations.md finding (P0/C/S/D/H) → recommendations-update.md | 2026-07-09 | 2cfa768 | | [260708-v1c-address-recommendations-md-findings-impl](./quick/260708-v1c-address-recommendations-md-findings-impl/) |
 | 260710-rkt | Multi-user admin: invite-based provisioning, Owner/Editor roles, admin management (deactivate/promote/demote) | 2026-07-10 | 4c374ee | Verified | [260710-rkt-plan-and-implement-multi-user-admin-func](./quick/260710-rkt-plan-and-implement-multi-user-admin-func/) |
 | 260710-ttv | Fix migration 0004 role-DEFAULT bug (backfill migration) + E2E validation for multi-user admin (CSRF/a11y fixes found along the way) | 2026-07-11 | TBD | Verified | [260710-ttv-fix-production-bug-migration-0004-role-d](./quick/260710-ttv-fix-production-bug-migration-0004-role-d/) |
+| 260710-uuh | Public self-service host registration + event ownership scoping (`created_by`, `host` role) across every admin route; home-page signup/login nav. Manual review found an unguarded RSVP-token-revoke route, a D1 `.bind()` misuse silently zeroing dashboard stats for every role, and a missing CSRF exemption — all fixed pre-merge | 2026-07-11 | 86d62d4 | Verified | [260710-uuh-add-public-self-service-host-registratio](./quick/260710-uuh-add-public-self-service-host-registratio/) |
 
 ---
 
