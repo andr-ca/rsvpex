@@ -84,9 +84,18 @@ export function csrfProtection() {
         return c.json({ error: 'origin_validation_unavailable' }, 403)
       }
       const allowed = [deployDomain]
-      // In dev, also allow localhost variants
       if (!deployDomain.includes('localhost')) {
+        // In dev, also allow localhost variants (DEPLOYMENT_DOMAIN is unset
+        // or still the production value here).
         allowed.push('http://localhost')
+      } else {
+        // DEPLOYMENT_DOMAIN itself is a localhost URL (E2E/local dev — see
+        // playwright.config.ts). `wrangler dev --local-upstream` strips the
+        // port from the incoming Origin header before the Worker sees it, so
+        // a browser sending `Origin: http://localhost:8787` arrives here as
+        // `http://localhost` — allow the port-stripped form too, or every
+        // local admin POST would fail this check even with a correct Origin.
+        allowed.push(deployDomain.replace(/:\d+$/, ''))
       }
       const originMatch = allowed.some(
         (d) => origin === d || origin.startsWith(d + '/') || origin.startsWith(d + ':'),
