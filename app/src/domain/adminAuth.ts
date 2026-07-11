@@ -311,3 +311,26 @@ export async function consumeResetToken(
 export async function deleteAllSessionsForUser(db: D1Database, adminUserId: string): Promise<void> {
   await db.prepare('DELETE FROM sessions WHERE admin_user_id = ?').bind(adminUserId).run()
 }
+
+/**
+ * Fetches the role ('owner', 'editor', 'host') for an admin user.
+ * Returns 'editor' as fallback if user not found (shouldn't happen in normal flow).
+ *
+ * @req AUTH-02 — Role-based access control for authorization helpers
+ */
+export async function getAdminRole(
+  db: D1Database,
+  adminUserId: string,
+): Promise<'owner' | 'editor' | 'host'> {
+  const row = await db
+    .prepare('SELECT role FROM admin_users WHERE id = ?')
+    .bind(adminUserId)
+    .first<{ role: string }>()
+
+  if (!row) {
+    return 'editor' // Fallback
+  }
+
+  const role = row.role as 'owner' | 'editor' | 'host'
+  return role
+}

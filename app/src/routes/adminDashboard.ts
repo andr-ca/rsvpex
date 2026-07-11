@@ -10,6 +10,8 @@
  */
 import type { Context } from 'hono'
 import { adminPage, escHtml } from '../views/layout'
+import { appendOwnershipFilter } from '../domain/authorization'
+import { getAdminRole } from '../domain/adminAuth'
 
 type EventSummary = {
   id: string
@@ -27,29 +29,37 @@ type DashboardStats = {
   dbOk: boolean
 }
 
-async function getDashboardStats(db: D1Database): Promise<DashboardStats> {
+async function getDashboardStats(
+  db: D1Database,
+  adminUserId: string,
+  role: 'owner' | 'editor' | 'host',
+): Promise<DashboardStats> {
   const now = new Date().toISOString()
+  const filter = appendOwnershipFilter(role, adminUserId, 'events')
+
   try {
     const [activeRes, upcomingRes, totalRes, recentRes] = await Promise.all([
       db
         .prepare(
-          "SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at <= ? AND (archived_at IS NULL)",
+          `SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at <= ? AND (archived_at IS NULL) ${filter}`,
         )
-        .bind(now)
+        .bind(role === 'host' ? [now, adminUserId] : [now])
         .first<{ n: number }>(),
       db
         .prepare(
-          "SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at > ? AND (archived_at IS NULL)",
+          `SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at > ? AND (archived_at IS NULL) ${filter}`,
         )
-        .bind(now)
+        .bind(role === 'host' ? [now, adminUserId] : [now])
         .first<{ n: number }>(),
       db
-        .prepare('SELECT COUNT(*) as n FROM events WHERE archived_at IS NULL')
+        .prepare(`SELECT COUNT(*) as n FROM events WHERE archived_at IS NULL ${filter}`)
+        .bind(role === 'host' ? [adminUserId] : [])
         .first<{ n: number }>(),
       db
         .prepare(
-          'SELECT id, title, status, start_at, slug FROM events WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 5',
+          `SELECT id, title, status, start_at, slug FROM events WHERE archived_at IS NULL ${filter} ORDER BY created_at DESC LIMIT 5`,
         )
+        .bind(role === 'host' ? [adminUserId] : [])
         .all<EventSummary>(),
     ])
     return {
@@ -67,7 +77,8 @@ async function getDashboardStats(db: D1Database): Promise<DashboardStats> {
 export async function adminDashboardHandler(
   c: Context<{ Bindings: Env; Variables: { adminUserId: string; csrfToken?: string } }>,
 ) {
-  const stats = await getDashboardStats(c.env.DB)
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const stats = await getDashboardStats(c.env.DB, c.var.adminUserId, role)
   const csrfToken = c.get('csrfToken') ?? ''
   const content = `
   <h1>Dashboard</h1>
