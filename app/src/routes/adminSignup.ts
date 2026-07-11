@@ -53,7 +53,7 @@ adminSignupRouter.get('/signup', (c) => {
  *
  * Rate-limited: 5 requests per minute per IP (adminAuthRateLimit)
  * Duplicate email: Returns 409 with friendly message and password reset link
- * Success: Redirect to /rsvp/admin/login (302)
+ * Success: Auto-login and redirect to /rsvp/admin (303)
  */
 adminSignupRouter.post('/signup', adminAuthRateLimit(), async (c) => {
   const body = await c.req.parseBody()
