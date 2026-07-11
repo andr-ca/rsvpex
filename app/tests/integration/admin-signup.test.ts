@@ -100,8 +100,14 @@ async function createEventForAdmin(sessionCookie: string, title: string): Promis
 describe('POST /rsvp/admin/signup', () => {
   it('creates a new host account with valid email and 12+ char password', async () => {
     const res = await signupHost('newhost@example.com', 'ValidPassword123!')
-    expect(res.status).toBe(302)
-    expect(res.headers.get('Location')).toContain('/rsvp/admin/login')
+    expect(res.status).toBe(303)
+    expect(res.headers.get('Location')).toBe('/rsvp/admin')
+
+    // Extract and verify the session_id cookie from the response
+    const setCookieHeader = res.headers.get('Set-Cookie') ?? ''
+    const sessionMatch = setCookieHeader.match(/session_id=([^;]+)/)
+    const sessionId = sessionMatch?.[1]
+    expect(sessionId).toBeTruthy()
 
     // Verify account created in DB
     const user = await env.DB.prepare('SELECT role FROM admin_users WHERE email = ? LIMIT 1')
@@ -109,12 +115,21 @@ describe('POST /rsvp/admin/signup', () => {
       .first<{ role: string }>()
 
     expect(user?.role).toBe('host')
+
+    // Verify the session works by making a follow-up authenticated request
+    const authRes = await app.fetch(
+      new Request('http://localhost/rsvp/admin/', {
+        headers: { Cookie: `session_id=${sessionId}` },
+      }),
+      env,
+    )
+    expect(authRes.status).toBe(200)
   })
 
   it('stores email in lowercase (case-insensitive)', async () => {
     const email = 'CaseTest@EXAMPLE.COM'
     const res = await signupHost(email, 'ValidPassword123!')
-    expect(res.status).toBe(302)
+    expect(res.status).toBe(303)
 
     const user = await env.DB.prepare('SELECT email FROM admin_users WHERE email = ? LIMIT 1')
       .bind('casetest@example.com')
@@ -145,7 +160,7 @@ describe('POST /rsvp/admin/signup', () => {
 
   it('accepts displayName (optional field)', async () => {
     const res = await signupHost('named@example.com', 'ValidPassword123!', 'Display Name')
-    expect(res.status).toBe(302)
+    expect(res.status).toBe(303)
 
     const user = await env.DB.prepare(
       'SELECT display_name FROM admin_users WHERE email = ? LIMIT 1',

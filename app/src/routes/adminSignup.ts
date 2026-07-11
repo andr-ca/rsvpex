@@ -8,12 +8,15 @@
  * @req HOST-REGISTRATION — Public self-service signup without invite codes
  */
 import { Hono } from 'hono'
+import { setCookie } from 'hono/cookie'
 import { z } from 'zod'
-import { hashPassword } from '../domain/adminAuth'
+import { hashPassword, createSession } from '../domain/adminAuth'
 import { adminAuthRateLimit } from '../middleware/rateLimit'
 import { escHtml } from '../views/layout'
 
 const adminSignupRouter = new Hono<{ Bindings: Env }>()
+
+const SESSION_EXPIRY_DAYS = 7
 
 const signupSchema = z.object({
   email: z.string().email('Invalid email').max(254),
@@ -138,8 +141,18 @@ adminSignupRouter.post('/signup', adminAuthRateLimit(), async (c) => {
     )
   }
 
-  // Success: redirect to login (302)
-  return c.redirect('/rsvp/admin/login?signup=success', 302)
+  // Success: Auto-login the new host
+  const sessionId = await createSession(c.env.DB, id, SESSION_EXPIRY_DAYS)
+
+  setCookie(c, 'session_id', sessionId, {
+    httpOnly: true,
+    sameSite: 'Lax',
+    secure: true,
+    maxAge: SESSION_EXPIRY_DAYS * 24 * 60 * 60,
+    path: '/',
+  })
+
+  return c.redirect('/rsvp/admin', 303)
 })
 
 export default adminSignupRouter
