@@ -12,7 +12,6 @@ import { z } from 'zod'
 import {
   createEvent,
   getEvent,
-  listEvents,
   updateEvent,
   publishEvent,
   archiveEvent,
@@ -143,8 +142,7 @@ adminEventsRouter.get('/rsvp/admin/events', async (c) => {
   } else {
     result = await c.env.DB.prepare(
       `SELECT * FROM events WHERE archived_at IS NULL ORDER BY start_at DESC`,
-    )
-      .all<EventRow>()
+    ).all<EventRow>()
   }
 
   const events = result.results

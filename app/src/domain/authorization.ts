@@ -19,7 +19,7 @@
 export function appendOwnershipFilter(
   role: 'owner' | 'editor' | 'host',
   adminUserId: string,
-  tableAlias: string = 'events'
+  tableAlias: string = 'events',
 ): string {
   if (role === 'owner' || role === 'editor') {
     return '' // No filter — see all events
@@ -51,7 +51,7 @@ export async function verifyEventOwnership(
   db: D1Database,
   eventId: string,
   adminUserId: string,
-  role: 'owner' | 'editor' | 'host'
+  role: 'owner' | 'editor' | 'host',
 ): Promise<boolean> {
   if (role === 'owner' || role === 'editor') {
     return true // No check needed — owner/editor see all events

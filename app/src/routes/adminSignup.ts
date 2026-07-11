@@ -75,7 +75,10 @@ adminSignupRouter.post('/signup', adminAuthRateLimit(), async (c) => {
   if (!validation.success) {
     const errors = validation.error.flatten().fieldErrors
     const errorList = Object.entries(errors)
-      .map(([field, msgs]) => `<p class="error">${escHtml(field)}: ${escHtml(msgs?.[0] || 'Invalid')}</p>`)
+      .map(
+        ([field, msgs]) =>
+          `<p class="error">${escHtml(field)}: ${escHtml(msgs?.[0] || 'Invalid')}</p>`,
+      )
       .join('')
 
     return c.html(
@@ -109,18 +112,14 @@ adminSignupRouter.post('/signup', adminAuthRateLimit(), async (c) => {
 
   // Conditional INSERT: race-safe (C-12 pattern from adminSetup.ts)
   // If email already exists, meta.changes === 0
-  const result = await c.env.DB.prepare(`
+  const result = await c.env.DB.prepare(
+    `
     INSERT INTO admin_users (id, email, password_hash, display_name, role, is_active, created_at)
     SELECT ?, ?, ?, ?, 'host', 1, datetime('now')
     WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE email = ?)
-  `)
-    .bind(
-      id,
-      email.toLowerCase(),
-      passwordHash,
-      displayName ?? null,
-      email.toLowerCase(),
-    )
+  `,
+  )
+    .bind(id, email.toLowerCase(), passwordHash, displayName ?? null, email.toLowerCase())
     .run()
 
   if (result.meta.changes === 0) {
