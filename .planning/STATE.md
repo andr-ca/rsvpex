@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: completed
 stopped_at: Phase 11 complete; post-launch remediation (quick tasks) in progress
-last_updated: "2026-07-09T02:20:00.000Z"
+last_updated: "2026-07-11T10:00:00.000Z"
 progress:
   total_phases: 11
   completed_phases: 11
@@ -87,6 +87,7 @@ None
 | 260710-rkt | Multi-user admin: invite-based provisioning, Owner/Editor roles, admin management (deactivate/promote/demote) | 2026-07-10 | 4c374ee | Verified | [260710-rkt-plan-and-implement-multi-user-admin-func](./quick/260710-rkt-plan-and-implement-multi-user-admin-func/) |
 | 260710-ttv | Fix migration 0004 role-DEFAULT bug (backfill migration) + E2E validation for multi-user admin (CSRF/a11y fixes found along the way) | 2026-07-11 | TBD | Verified | [260710-ttv-fix-production-bug-migration-0004-role-d](./quick/260710-ttv-fix-production-bug-migration-0004-role-d/) |
 | 260710-uuh | Public self-service host registration + event ownership scoping (`created_by`, `host` role) across every admin route; home-page signup/login nav. Manual review found an unguarded RSVP-token-revoke route, a D1 `.bind()` misuse silently zeroing dashboard stats for every role, and a missing CSRF exemption — all fixed pre-merge | 2026-07-11 | 86d62d4 | Verified | [260710-uuh-add-public-self-service-host-registratio](./quick/260710-uuh-add-public-self-service-host-registratio/) |
+| 260711-8a8 | Auto-login new hosts immediately after signup (session cookie + 303 to /rsvp/admin) instead of redirecting to the login page | 2026-07-11 | f8dddfe | Verified | [260711-8a8-auto-login-new-hosts-immediately-after-s](./quick/260711-8a8-auto-login-new-hosts-immediately-after-s/) |
 
 ---
 
