@@ -17,7 +17,7 @@ export const adminUsers = sqliteTable('admin_users', {
   twoFactorSecret: text('two_factor_secret'),
   recoveryCodes: text('recovery_codes').notNull().default('[]'), // JSON array
   lastLoginAt: text('last_login_at'),
-  role: text('role', { enum: ['owner', 'editor'] })
+  role: text('role', { enum: ['owner', 'editor', 'host'] })
     .notNull()
     .default('editor'),
   createdAt: text('created_at')
@@ -92,6 +92,7 @@ export const events = sqliteTable(
     updatedAt: text('updated_at')
       .notNull()
       .default(sql`(datetime('now'))`),
+    createdBy: text('created_by'), // nullable — null for legacy pre-scoping events
     archivedAt: text('archived_at'),
   },
   (table) => [
@@ -279,7 +280,7 @@ export const adminInvites = sqliteTable(
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
     email: text('email').notNull(),
-    role: text('role', { enum: ['owner', 'editor'] })
+    role: text('role', { enum: ['owner', 'editor', 'host'] })
       .notNull()
       .default('editor'),
     tokenHash: text('token_hash').notNull(),

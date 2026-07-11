@@ -13,8 +13,9 @@ import { getCookie } from 'hono/cookie'
 import { getEvent } from '../domain/adminEvents'
 import { requireAdmin } from '../middleware/requireAdmin'
 import { writeAuditLog } from '../domain/audit'
-import { hashToken } from '../domain/adminAuth'
+import { hashToken, getAdminRole } from '../domain/adminAuth'
 import { rsvpsToCsv, rsvpsToJson, parseImportCsv, isSessionFresh } from '../domain/dataManagement'
+import { verifyEventOwnership } from '../domain/authorization'
 import type { RsvpExportRow, ImportRow } from '../domain/dataManagement'
 
 /** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
@@ -38,6 +39,11 @@ adminDataRouter.use('/rsvp/admin/events/*', requireAdmin)
 adminDataRouter.get('/rsvp/admin/events/:id/export.csv', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
 
   const rows = await c.env.DB.prepare(
     'SELECT id,name,email,phone,status,adults,parents_count,siblings_count,children_count,party_total,dietary,notes,submitted_at,rsvp_token FROM rsvps WHERE event_id = ? ORDER BY submitted_at ASC',
@@ -74,6 +80,11 @@ adminDataRouter.get('/rsvp/admin/events/:id/export.csv', async (c) => {
 adminDataRouter.get('/rsvp/admin/events/:id/export.json', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
 
   const includeTokens = c.req.query('include_tokens') === 'true'
 
@@ -136,6 +147,11 @@ const MAX_IMPORT_ROWS = 1000
 adminDataRouter.post('/rsvp/admin/events/:id/import', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
 
   // Parse multipart form data
   let csvText: string

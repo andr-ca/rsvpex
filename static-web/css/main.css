@@ -68,6 +68,33 @@ body {
   border-radius: 20px;
 }
 
+.nav-links {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.nav-link {
+  font-size: 0.95rem;
+  text-decoration: none;
+  color: var(--ink);
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.2s ease;
+}
+
+.nav-link:hover {
+  border-bottom-color: var(--terracotta);
+}
+
+@media (max-width: 640px) {
+  .nav-links {
+    gap: 1rem;
+  }
+
+  .nav-link {
+    font-size: 0.85rem;
+  }
+}
+
 /* ---------- Hero ---------- */
 .hero {
   max-width: var(--max-w);

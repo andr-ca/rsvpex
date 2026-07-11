@@ -110,7 +110,11 @@ export async function generateUniqueSlug(
 /**
  * Create a new event. Returns the new event id.
  */
-export async function createEvent(db: D1Database, input: EventInput): Promise<string> {
+export async function createEvent(
+  db: D1Database,
+  input: EventInput,
+  createdBy?: string,
+): Promise<string> {
   const id = crypto.randomUUID()
   const baseSlug = input.slug ? slugify(input.slug) : slugify(input.title)
   const slug = await generateUniqueSlug(db, baseSlug)
@@ -127,7 +131,7 @@ export async function createEvent(db: D1Database, input: EventInput): Promise<st
       locale, max_guests_total, max_party_size_per_rsvp,
       opens_at, closes_at, status,
       notify_via_email, notify_via_sms, reminder_days_before,
-      questions, created_at, updated_at
+      questions, created_at, updated_at, created_by
     ) VALUES (
       ?,?,?,?,?,?, ?,?,?,?,
       ?,?,?,?,?,
@@ -135,7 +139,7 @@ export async function createEvent(db: D1Database, input: EventInput): Promise<st
       ?,?,?,
       ?,?,'draft',
       ?,?,?,
-      ?,?,?
+      ?,?,?,?
     )
   `,
     )
@@ -169,6 +173,7 @@ export async function createEvent(db: D1Database, input: EventInput): Promise<st
       input.questions,
       now,
       now,
+      createdBy ?? null,
     )
     .run()
 

@@ -7,9 +7,10 @@
  *   1. Origin header (if present) matches DEPLOYMENT_DOMAIN
  *   2. `csrf_token` cookie matches `X-CSRF-Token` header or `_csrf` form field
  *
- * Exempt routes (pre-auth): /rsvp/admin/setup, /rsvp/admin/login,
- *   /rsvp/admin/password-reset, /rsvp/admin/password-reset/confirm,
- *   /rsvp/admin/logout, /rsvp/admin/invite/accept
+ * Exempt routes (pre-auth): /rsvp/admin/setup, /rsvp/admin/signup,
+ *   /rsvp/admin/login, /rsvp/admin/password-reset,
+ *   /rsvp/admin/password-reset/confirm, /rsvp/admin/logout,
+ *   /rsvp/admin/invite/accept
  * Exempt: all non-admin routes (public RSVP has Turnstile + rate limiting)
  *
  * @req SEC-03 — CSRF protection on all mutating admin endpoints
@@ -21,6 +22,7 @@ import { timingSafeEqual } from '../domain/tokens'
 /** Admin paths exempt from CSRF (pre-auth or logout). */
 const EXEMPT_PATHS = new Set([
   '/rsvp/admin/setup',
+  '/rsvp/admin/signup',
   '/rsvp/admin/login',
   '/rsvp/admin/logout',
   '/rsvp/admin/password-reset',

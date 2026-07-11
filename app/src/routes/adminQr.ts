@@ -10,6 +10,8 @@ import QRCode from 'qrcode'
 import { getEvent } from '../domain/adminEvents'
 import { requireAdmin } from '../middleware/requireAdmin'
 import { escHtml } from '../views/layout'
+import { verifyEventOwnership } from '../domain/authorization'
+import { getAdminRole } from '../domain/adminAuth'
 
 const adminQrRouter = new Hono<{ Bindings: Env; Variables: { adminUserId: string } }>()
 
@@ -18,6 +20,11 @@ adminQrRouter.use('/rsvp/admin/events/*', requireAdmin)
 adminQrRouter.get('/rsvp/admin/events/:id/qr', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
 
   const baseUrl = new URL(c.req.url).origin
   const token = event.access_token ? `?t=${event.access_token}` : ''

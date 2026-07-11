@@ -34,7 +34,7 @@ adminManagementRouter.get('/admins', requireAdmin, requireOwner, async (c) => {
   const currentUserId = c.var.adminUserId
   const csrfToken = c.get('csrfToken') ?? ''
   const result = await c.env.DB.prepare(
-    'SELECT id, email, display_name, role, is_active, created_at FROM admin_users ORDER BY created_at',
+    "SELECT id, email, display_name, role, is_active, created_at FROM admin_users WHERE role IN ('owner', 'editor') ORDER BY created_at",
   ).all<AdminUser>()
 
   const admins = result.results || []
