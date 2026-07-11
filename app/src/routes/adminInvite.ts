@@ -10,6 +10,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { createInvite } from '../domain/adminInvites'
+import { requireAdmin } from '../middleware/requireAdmin'
 import { requireOwner } from '../middleware/requireOwner'
 import { adminAuthRateLimit } from '../middleware/rateLimit'
 import { escHtml } from '../views/layout'
@@ -21,7 +22,7 @@ const inviteSchema = z.object({
   role: z.enum(['owner', 'editor']).default('editor'),
 })
 
-adminInviteRouter.get('/admins/invite', requireOwner, (c) => {
+adminInviteRouter.get('/admins/invite', requireAdmin, requireOwner, (c) => {
   return c.html(
     page(
       'Invite Admin',
@@ -43,7 +44,7 @@ adminInviteRouter.get('/admins/invite', requireOwner, (c) => {
   )
 })
 
-adminInviteRouter.post('/admins/invite', requireOwner, adminAuthRateLimit(), async (c) => {
+adminInviteRouter.post('/admins/invite', requireAdmin, requireOwner, adminAuthRateLimit(), async (c) => {
   const body = await c.req.parseBody()
   const parsed = inviteSchema.safeParse(body)
   if (!parsed.success) {

@@ -12,6 +12,7 @@
  */
 import { Hono } from 'hono'
 import { deleteAllSessionsForUser } from '../domain/adminAuth'
+import { requireAdmin } from '../middleware/requireAdmin'
 import { requireOwner } from '../middleware/requireOwner'
 import { escHtml } from '../views/layout'
 
@@ -26,7 +27,7 @@ type AdminUser = {
   created_at: string
 }
 
-adminManagementRouter.get('/admins', requireOwner, async (c) => {
+adminManagementRouter.get('/admins', requireAdmin, requireOwner, async (c) => {
   const currentUserId = c.var.adminUserId
   const result = await c.env.DB.prepare(
     'SELECT id, email, display_name, role, is_active, created_at FROM admin_users ORDER BY created_at',
@@ -76,7 +77,7 @@ adminManagementRouter.get('/admins', requireOwner, async (c) => {
   )
 })
 
-adminManagementRouter.post('/admins/:id/deactivate', requireOwner, async (c) => {
+adminManagementRouter.post('/admins/:id/deactivate', requireAdmin, requireOwner, async (c) => {
   const id = c.req.param('id')
   const currentUserId = c.var.adminUserId
 
@@ -107,7 +108,7 @@ adminManagementRouter.post('/admins/:id/deactivate', requireOwner, async (c) => 
   return c.redirect('/rsvp/admin/admins', 303)
 })
 
-adminManagementRouter.post('/admins/:id/reactivate', requireOwner, async (c) => {
+adminManagementRouter.post('/admins/:id/reactivate', requireAdmin, requireOwner, async (c) => {
   const id = c.req.param('id')
   const currentUserId = c.var.adminUserId
 
@@ -125,7 +126,7 @@ adminManagementRouter.post('/admins/:id/reactivate', requireOwner, async (c) => 
   return c.redirect('/rsvp/admin/admins', 303)
 })
 
-adminManagementRouter.post('/admins/:id/promote', requireOwner, async (c) => {
+adminManagementRouter.post('/admins/:id/promote', requireAdmin, requireOwner, async (c) => {
   const id = c.req.param('id')
   const currentUserId = c.var.adminUserId
 
@@ -148,7 +149,7 @@ adminManagementRouter.post('/admins/:id/promote', requireOwner, async (c) => {
   return c.redirect('/rsvp/admin/admins', 303)
 })
 
-adminManagementRouter.post('/admins/:id/demote', requireOwner, async (c) => {
+adminManagementRouter.post('/admins/:id/demote', requireAdmin, requireOwner, async (c) => {
   const id = c.req.param('id')
   const currentUserId = c.var.adminUserId
 

@@ -77,7 +77,8 @@ app.route('/', adminQrRouter)
 app.route('/', adminDataRouter)
 
 // Multi-user admin: invite and management routes (Owner only)
-app.route('/', requireAdmin, adminInviteRouter)
-app.route('/', requireAdmin, adminManagementRouter)
+// Routes handle both requireAdmin and requireOwner internally
+app.route('/rsvp/admin', adminInviteRouter)
+app.route('/rsvp/admin', adminManagementRouter)
 
 export default app
