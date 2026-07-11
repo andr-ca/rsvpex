@@ -133,11 +133,19 @@ adminEventsRouter.get('/rsvp/admin/events', async (c) => {
   const role = await getAdminRole(c.env.DB, c.var.adminUserId)
   const filter = appendOwnershipFilter(role, c.var.adminUserId, 'events')
 
-  const result = await c.env.DB.prepare(
-    `SELECT * FROM events WHERE archived_at IS NULL ${filter} ORDER BY start_at DESC`,
-  )
-    .bind(role === 'host' ? [c.var.adminUserId] : [])
-    .all<EventRow>()
+  let result
+  if (role === 'host') {
+    result = await c.env.DB.prepare(
+      `SELECT * FROM events WHERE archived_at IS NULL ${filter} ORDER BY start_at DESC`,
+    )
+      .bind(c.var.adminUserId)
+      .all<EventRow>()
+  } else {
+    result = await c.env.DB.prepare(
+      `SELECT * FROM events WHERE archived_at IS NULL ORDER BY start_at DESC`,
+    )
+      .all<EventRow>()
+  }
 
   const events = result.results
   return c.html(
