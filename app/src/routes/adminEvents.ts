@@ -17,11 +17,14 @@ import {
   publishEvent,
   archiveEvent,
   getEventStats,
+  type EventRow,
 } from '../domain/adminEvents'
 import { requireAdmin } from '../middleware/requireAdmin'
 import { writeAuditLog, buildDiff } from '../domain/audit'
 import { escHtml, adminPage, csrfField } from '../views/layout'
 import { localToUtc, utcToLocal } from '../domain/timezone'
+import { appendOwnershipFilter, verifyEventOwnership } from '../domain/authorization'
+import { getAdminRole } from '../domain/adminAuth'
 
 /** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
 function fireAuditLog(
@@ -127,7 +130,16 @@ const eventSchema = z.object({
 
 // GET /rsvp/admin/events — list all events
 adminEventsRouter.get('/rsvp/admin/events', async (c) => {
-  const events = await listEvents(c.env.DB)
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const filter = appendOwnershipFilter(role, c.var.adminUserId, 'events')
+
+  const result = await c.env.DB.prepare(
+    `SELECT * FROM events WHERE archived_at IS NULL ${filter} ORDER BY start_at DESC`,
+  )
+    .bind(role === 'host' ? [c.var.adminUserId] : [])
+    .all<EventRow>()
+
+  const events = result.results
   return c.html(
     adminPage(
       'Events — RSVPex Admin',
@@ -219,34 +231,38 @@ adminEventsRouter.post('/rsvp/admin/events', async (c) => {
     )
   }
   const questionsJson = d.questions && d.questions.trim() !== '' ? d.questions : '[]'
-  const id = await createEvent(c.env.DB, {
-    title: d.title,
-    slug: d.slug,
-    hostName: d.host_name,
-    descriptionHtml: d.description_html,
-    timezone: d.timezone,
-    startAt: times.start_at,
-    endAt: times.end_at,
-    locationText: d.location_text,
-    wishlistUrl: d.wishlist_url || undefined,
-    visibility: d.visibility,
-    isKidsEvent: d.is_kids_event,
-    allowChildren: d.allow_children,
-    allowSiblings: d.allow_siblings,
-    allowParents: d.allow_parents,
-    allowStatusChoice: d.allow_status_choice,
-    enableWaitlist: d.enable_waitlist,
-    enableHeuristicDupCheck: d.enable_heuristic_dup_check,
-    locale: d.locale,
-    maxGuestsTotal: d.max_guests_total ?? undefined,
-    maxPartySizePerRsvp: d.max_party_size_per_rsvp,
-    opensAt: d.opens_at,
-    closesAt: d.closes_at,
-    notifyViaEmail: d.notify_via_email,
-    notifyViaSms: d.notify_via_sms,
-    reminderDaysBefore: d.reminder_days_before,
-    questions: questionsJson,
-  })
+  const id = await createEvent(
+    c.env.DB,
+    {
+      title: d.title,
+      slug: d.slug,
+      hostName: d.host_name,
+      descriptionHtml: d.description_html,
+      timezone: d.timezone,
+      startAt: times.start_at,
+      endAt: times.end_at,
+      locationText: d.location_text,
+      wishlistUrl: d.wishlist_url || undefined,
+      visibility: d.visibility,
+      isKidsEvent: d.is_kids_event,
+      allowChildren: d.allow_children,
+      allowSiblings: d.allow_siblings,
+      allowParents: d.allow_parents,
+      allowStatusChoice: d.allow_status_choice,
+      enableWaitlist: d.enable_waitlist,
+      enableHeuristicDupCheck: d.enable_heuristic_dup_check,
+      locale: d.locale,
+      maxGuestsTotal: d.max_guests_total ?? undefined,
+      maxPartySizePerRsvp: d.max_party_size_per_rsvp,
+      opensAt: d.opens_at,
+      closesAt: d.closes_at,
+      notifyViaEmail: d.notify_via_email,
+      notifyViaSms: d.notify_via_sms,
+      reminderDaysBefore: d.reminder_days_before,
+      questions: questionsJson,
+    },
+    c.var.adminUserId,
+  )
   fireAuditLog(
     c,
     writeAuditLog(c.env.DB, {
@@ -264,6 +280,12 @@ adminEventsRouter.post('/rsvp/admin/events', async (c) => {
 adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   const stats = await getEventStats(c.env.DB, event.id)
   const csrfToken = c.get('csrfToken') ?? ''
   const capacityStr =
@@ -325,6 +347,12 @@ adminEventsRouter.get('/rsvp/admin/events/:id', async (c) => {
 adminEventsRouter.get('/rsvp/admin/events/:id/edit', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   const csrfToken = c.get('csrfToken') ?? ''
   return c.html(
     adminPage(
@@ -343,6 +371,12 @@ adminEventsRouter.get('/rsvp/admin/events/:id/edit', async (c) => {
 adminEventsRouter.post('/rsvp/admin/events/:id/edit', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   const csrfToken = c.get('csrfToken') ?? ''
   const body = await c.req.parseBody()
   const parsed = eventSchema.safeParse(body)
@@ -475,6 +509,12 @@ adminEventsRouter.post('/rsvp/admin/events/:id/edit', async (c) => {
 adminEventsRouter.post('/rsvp/admin/events/:id/publish', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   await publishEvent(c.env.DB, event.id)
   fireAuditLog(
     c,
@@ -493,6 +533,12 @@ adminEventsRouter.post('/rsvp/admin/events/:id/publish', async (c) => {
 adminEventsRouter.post('/rsvp/admin/events/:id/archive', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   await archiveEvent(c.env.DB, event.id)
   fireAuditLog(
     c,
