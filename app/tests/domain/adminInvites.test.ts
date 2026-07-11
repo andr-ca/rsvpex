@@ -3,7 +3,7 @@
  * Unit tests for admin invite domain functions.
  */
 import { env } from 'cloudflare:test'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { createInvite, consumeInvite } from '../../src/domain/adminInvites'
 
 describe('createInvite', () => {
@@ -22,7 +22,7 @@ describe('createInvite', () => {
   })
 
   it('persists role column in invite', async () => {
-    const ownerToken = await createInvite(env.DB, 'owner@example.com', 'owner', 10_080)
+    await createInvite(env.DB, 'owner@example.com', 'owner', 10_080)
     const invite = await env.DB.prepare('SELECT role FROM admin_invites WHERE email = ?')
       .bind('owner@example.com')
       .first<{ role: string }>()
@@ -32,7 +32,6 @@ describe('createInvite', () => {
   it('sets expiry to future timestamp', async () => {
     const before = Date.now()
     await createInvite(env.DB, 'future@example.com', 'editor', 10_080)
-    const after = Date.now()
 
     const row = await env.DB.prepare('SELECT expires_at FROM admin_invites WHERE email = ?')
       .bind('future@example.com')

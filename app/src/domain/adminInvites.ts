@@ -10,9 +10,6 @@
  */
 import { hashToken } from './adminAuth'
 
-/** 7 days in minutes — invite link expiry window */
-const INVITE_EXPIRY_MINUTES = 10_080
-
 /**
  * Creates an admin invite token and persists it to the database.
  * Stores role so the invited user's account is created with the selected role.

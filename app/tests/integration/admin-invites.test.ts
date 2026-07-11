@@ -180,7 +180,7 @@ describe('POST /rsvp/admin/invite/accept', () => {
       env,
     )
     const inviteHtml = await inviteRes.text()
-    const tokenMatch = inviteHtml.match(/token=([a-f0-9\-]+)/)
+    const tokenMatch = inviteHtml.match(/token=([a-f0-9-]+)/)
     const token = tokenMatch?.[1]
 
     if (!token) throw new Error('No token found in invite response')
@@ -255,7 +255,7 @@ describe('POST /rsvp/admin/invite/accept', () => {
       env,
     )
     const inviteHtml = await inviteRes.text()
-    const tokenMatch = inviteHtml.match(/token=([a-f0-9\-]+)/)
+    const tokenMatch = inviteHtml.match(/token=([a-f0-9-]+)/)
     const token = tokenMatch?.[1]
 
     if (!token) throw new Error('No token found in invite response')

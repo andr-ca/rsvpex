@@ -23,7 +23,6 @@ import adminInviteRouter from './routes/adminInvite'
 import adminInviteAcceptRouter from './routes/adminInviteAccept'
 import adminManagementRouter from './routes/adminManagement'
 import { requireAdmin } from './middleware/requireAdmin'
-import { requireOwner } from './middleware/requireOwner'
 
 const app = new Hono<{ Bindings: Env }>()
 
