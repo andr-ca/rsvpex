@@ -43,23 +43,23 @@ async function getDashboardStats(
         .prepare(
           `SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at <= ? AND (archived_at IS NULL) ${filter}`,
         )
-        .bind(role === 'host' ? [now, adminUserId] : [now])
+        .bind(...(role === 'host' ? [now, adminUserId] : [now]))
         .first<{ n: number }>(),
       db
         .prepare(
           `SELECT COUNT(*) as n FROM events WHERE status = 'published' AND start_at > ? AND (archived_at IS NULL) ${filter}`,
         )
-        .bind(role === 'host' ? [now, adminUserId] : [now])
+        .bind(...(role === 'host' ? [now, adminUserId] : [now]))
         .first<{ n: number }>(),
       db
         .prepare(`SELECT COUNT(*) as n FROM events WHERE archived_at IS NULL ${filter}`)
-        .bind(role === 'host' ? [adminUserId] : [])
+        .bind(...(role === 'host' ? [adminUserId] : []))
         .first<{ n: number }>(),
       db
         .prepare(
           `SELECT id, title, status, start_at, slug FROM events WHERE archived_at IS NULL ${filter} ORDER BY created_at DESC LIMIT 5`,
         )
-        .bind(role === 'host' ? [adminUserId] : [])
+        .bind(...(role === 'host' ? [adminUserId] : []))
         .all<EventSummary>(),
     ])
     return {

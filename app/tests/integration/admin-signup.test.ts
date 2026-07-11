@@ -51,10 +51,24 @@ async function createAdminUser(
   return `session_id=${sessionId}`
 }
 
+/** Fetch a CSRF token by doing a GET to an admin page and extracting the csrf_token cookie. */
+async function getCsrfToken(sessionCookie: string): Promise<string> {
+  const res = await app.fetch(
+    new Request('http://localhost/rsvp/admin/', {
+      headers: { Cookie: sessionCookie },
+    }),
+    env,
+  )
+  const setCookieHeader = res.headers.get('Set-Cookie') ?? ''
+  const match = setCookieHeader.match(/csrf_token=([^;]+)/)
+  return match?.[1] ?? ''
+}
+
 /**
  * Helper to create an event as a specific admin user
  */
 async function createEventForAdmin(sessionCookie: string, title: string): Promise<string> {
+  const csrfToken = await getCsrfToken(sessionCookie)
   const body = new URLSearchParams({
     title,
     start_at: '2027-06-01T18:00',
@@ -68,7 +82,11 @@ async function createEventForAdmin(sessionCookie: string, title: string): Promis
     new Request('http://localhost/rsvp/admin/events', {
       method: 'POST',
       body,
-      headers: { Cookie: sessionCookie },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Cookie: `${sessionCookie}; csrf_token=${csrfToken}`,
+        'X-CSRF-Token': csrfToken,
+      },
     }),
     env,
   )
@@ -94,15 +112,15 @@ describe('POST /rsvp/admin/signup', () => {
   })
 
   it('stores email in lowercase (case-insensitive)', async () => {
-    const email = 'NewHost@EXAMPLE.COM'
+    const email = 'CaseTest@EXAMPLE.COM'
     const res = await signupHost(email, 'ValidPassword123!')
     expect(res.status).toBe(302)
 
     const user = await env.DB.prepare('SELECT email FROM admin_users WHERE email = ? LIMIT 1')
-      .bind('newhost@example.com')
+      .bind('casetest@example.com')
       .first<{ email: string }>()
 
-    expect(user?.email).toBe('newhost@example.com')
+    expect(user?.email).toBe('casetest@example.com')
   })
 
   it('returns 409 when email already exists', async () => {
@@ -140,35 +158,41 @@ describe('POST /rsvp/admin/signup', () => {
 })
 
 describe('Ownership scoping across routes', () => {
-  it('host A cannot access host B event (returns 404)', async () => {
+  it('event created via the real route has created_by set, and is 404 for a different host', async () => {
     const hostACookie = await createAdminUser('hostA@example.com', 'HostA123!Pass', 'host')
     const hostBCookie = await createAdminUser('hostB@example.com', 'HostB123!Pass', 'host')
 
-    // Get host A's ID
+    // Host A creates an event through the actual POST /rsvp/admin/events route
+    // (not a direct DB insert) — proves createEvent() really persists created_by
+    // as c.var.adminUserId, not just that the read-side ownership check works.
+    const eventId = await createEventForAdmin(hostACookie, 'Host A Event')
+    expect(eventId).toBeTruthy()
+
     const hostAUser = await env.DB.prepare('SELECT id FROM admin_users WHERE email = ? LIMIT 1')
-      .bind('hostA@example.com')
+      .bind('hosta@example.com')
       .first<{ id: string }>()
+    const event = await env.DB.prepare('SELECT created_by FROM events WHERE id = ?')
+      .bind(eventId)
+      .first<{ created_by: string | null }>()
+    expect(event?.created_by).toBe(hostAUser?.id)
 
-    const hostAId = hostAUser?.id ?? ''
-
-    // Create an event owned by Host A
-    const eventId = crypto.randomUUID()
-    await env.DB.prepare(
-      `INSERT INTO events (id, slug, title, start_at, timezone, created_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+    // Host A can see their own event
+    const ownRes = await app.fetch(
+      new Request(`http://localhost/rsvp/admin/events/${eventId}`, {
+        headers: { Cookie: hostACookie },
+      }),
+      env,
     )
-      .bind(eventId, 'host-a-event', 'Host A Event', '2027-06-01T18:00:00Z', 'America/Toronto', hostAId)
-      .run()
+    expect(ownRes.status).toBe(200)
 
-    // Host B tries to access Host A's event detail
-    const res = await app.fetch(
+    // Host B cannot — 404, not 403 (don't reveal the event exists)
+    const otherRes = await app.fetch(
       new Request(`http://localhost/rsvp/admin/events/${eventId}`, {
         headers: { Cookie: hostBCookie },
       }),
       env,
     )
-
-    expect(res.status).toBe(404)
+    expect(otherRes.status).toBe(404)
   })
 
   it('owner can see all events including legacy NULL-owner events', async () => {
@@ -180,7 +204,13 @@ describe('Ownership scoping across routes', () => {
       `INSERT INTO events (id, slug, title, start_at, timezone, created_by)
        VALUES (?, ?, ?, ?, ?, NULL)`,
     )
-      .bind(legacyEventId, 'legacy-event', 'Legacy Event', '2027-06-01T18:00:00Z', 'America/Toronto')
+      .bind(
+        legacyEventId,
+        'legacy-event',
+        'Legacy Event',
+        '2027-06-01T18:00:00Z',
+        'America/Toronto',
+      )
       .run()
 
     // Owner lists events
@@ -205,7 +235,13 @@ describe('Ownership scoping across routes', () => {
       `INSERT INTO events (id, slug, title, start_at, timezone, created_by)
        VALUES (?, ?, ?, ?, ?, NULL)`,
     )
-      .bind(legacyEventId, 'legacy-event-2', 'Legacy Event 2', '2027-06-01T18:00:00Z', 'America/Toronto')
+      .bind(
+        legacyEventId,
+        'legacy-event-2',
+        'Legacy Event 2',
+        '2027-06-01T18:00:00Z',
+        'America/Toronto',
+      )
       .run()
 
     // Host lists events
@@ -237,7 +273,14 @@ describe('Ownership scoping across routes', () => {
       `INSERT INTO events (id, slug, title, start_at, timezone, created_by)
        VALUES (?, ?, ?, ?, ?, ?)`,
     )
-      .bind(eventId, 'other-host-event', 'Other Host Event', '2027-06-01T18:00:00Z', 'America/Toronto', otherHostId)
+      .bind(
+        eventId,
+        'other-host-event',
+        'Other Host Event',
+        '2027-06-01T18:00:00Z',
+        'America/Toronto',
+        otherHostId,
+      )
       .run()
 
     // Current host tries to access event created by another host

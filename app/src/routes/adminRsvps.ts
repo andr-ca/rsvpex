@@ -300,6 +300,11 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => 
 adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/revoke-token', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   const rsvp = await getRsvp(c.env.DB, c.req.param('rsvpId'))
   if (!rsvp || rsvp.event_id !== event.id) return c.notFound()
 
