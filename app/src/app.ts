@@ -12,6 +12,7 @@ import icsRouter from './routes/rsvpIcs'
 import adminAssetsRouter from './routes/adminAssets'
 import adminSetupRouter from './routes/adminSetup'
 import adminLoginRouter from './routes/adminLogin'
+import adminSignupRouter from './routes/adminSignup'
 import adminLogoutRouter from './routes/adminLogout'
 import adminPasswordResetRouter from './routes/adminPasswordReset'
 import { adminDashboardHandler } from './routes/adminDashboard'
@@ -61,6 +62,7 @@ app.route('/', adminAssetsRouter)
 // Phase 4: Admin auth — public endpoints (no requireAdmin)
 app.route('/rsvp/admin', adminSetupRouter)
 app.route('/rsvp/admin', adminLoginRouter)
+app.route('/rsvp/admin', adminSignupRouter)
 app.route('/rsvp/admin', adminLogoutRouter)
 app.route('/rsvp/admin', adminPasswordResetRouter)
 app.route('/rsvp/admin', adminInviteAcceptRouter)
