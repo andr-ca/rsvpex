@@ -9,7 +9,7 @@
  *
  * Exempt routes (pre-auth): /rsvp/admin/setup, /rsvp/admin/login,
  *   /rsvp/admin/password-reset, /rsvp/admin/password-reset/confirm,
- *   /rsvp/admin/logout
+ *   /rsvp/admin/logout, /rsvp/admin/invite/accept
  * Exempt: all non-admin routes (public RSVP has Turnstile + rate limiting)
  *
  * @req SEC-03 — CSRF protection on all mutating admin endpoints
@@ -25,6 +25,7 @@ const EXEMPT_PATHS = new Set([
   '/rsvp/admin/logout',
   '/rsvp/admin/password-reset',
   '/rsvp/admin/password-reset/confirm',
+  '/rsvp/admin/invite/accept',
 ])
 
 function isExempt(path: string): boolean {

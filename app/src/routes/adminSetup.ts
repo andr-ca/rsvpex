@@ -76,10 +76,10 @@ adminSetupRouter.post('/setup', async (c) => {
   // emails differ, so guard with a conditional INSERT that only fires when the
   // table is still empty, and treat the resulting no-op as "already set up".
   const result = await c.env.DB.prepare(
-    `INSERT INTO admin_users (id, email, password_hash, display_name)
-     SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM admin_users)`,
+    `INSERT INTO admin_users (id, email, password_hash, display_name, role)
+     SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM admin_users)`,
   )
-    .bind(id, email.toLowerCase(), passwordHash, display_name ?? null)
+    .bind(id, email.toLowerCase(), passwordHash, display_name ?? null, 'owner')
     .run()
 
   if (result.meta.changes === 0) {

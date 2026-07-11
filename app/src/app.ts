@@ -19,6 +19,9 @@ import adminEventsRouter from './routes/adminEvents'
 import adminRsvpsRouter from './routes/adminRsvps'
 import adminQrRouter from './routes/adminQr'
 import adminDataRouter from './routes/adminData'
+import adminInviteRouter from './routes/adminInvite'
+import adminInviteAcceptRouter from './routes/adminInviteAccept'
+import adminManagementRouter from './routes/adminManagement'
 import { requireAdmin } from './middleware/requireAdmin'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -60,6 +63,7 @@ app.route('/rsvp/admin', adminSetupRouter)
 app.route('/rsvp/admin', adminLoginRouter)
 app.route('/rsvp/admin', adminLogoutRouter)
 app.route('/rsvp/admin', adminPasswordResetRouter)
+app.route('/rsvp/admin', adminInviteAcceptRouter)
 
 // Phase 4: Protected admin routes
 app.get('/rsvp/admin/', requireAdmin, adminDashboardHandler)
@@ -70,5 +74,10 @@ app.route('/', adminEventsRouter)
 app.route('/', adminRsvpsRouter)
 app.route('/', adminQrRouter)
 app.route('/', adminDataRouter)
+
+// Multi-user admin: invite and management routes (Owner only)
+// Routes handle both requireAdmin and requireOwner internally
+app.route('/rsvp/admin', adminInviteRouter)
+app.route('/rsvp/admin', adminManagementRouter)
 
 export default app

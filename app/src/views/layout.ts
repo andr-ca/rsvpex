@@ -99,6 +99,7 @@ export function adminPage(title: string, content: string, csrfToken?: string): s
   <nav>
     <a href="/rsvp/admin/">Dashboard</a>
     <a href="/rsvp/admin/events">Events</a>
+    <a href="/rsvp/admin/admins">Admins</a>
     <form method="POST" action="/rsvp/admin/logout" style="margin:0">
       ${csrfToken ? csrfField(csrfToken) : ''}
       <button style="background:none;border:none;cursor:pointer;color:#333;padding:0;font-size:1rem">Log Out</button>
