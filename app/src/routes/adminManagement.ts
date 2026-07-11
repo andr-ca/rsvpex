@@ -14,9 +14,12 @@ import { Hono } from 'hono'
 import { deleteAllSessionsForUser } from '../domain/adminAuth'
 import { requireAdmin } from '../middleware/requireAdmin'
 import { requireOwner } from '../middleware/requireOwner'
-import { escHtml } from '../views/layout'
+import { escHtml, csrfField, adminPage } from '../views/layout'
 
-const adminManagementRouter = new Hono<{ Bindings: Env; Variables: { adminUserId: string } }>()
+const adminManagementRouter = new Hono<{
+  Bindings: Env
+  Variables: { adminUserId: string; csrfToken?: string }
+}>()
 
 type AdminUser = {
   id: string
@@ -29,6 +32,7 @@ type AdminUser = {
 
 adminManagementRouter.get('/admins', requireAdmin, requireOwner, async (c) => {
   const currentUserId = c.var.adminUserId
+  const csrfToken = c.get('csrfToken') ?? ''
   const result = await c.env.DB.prepare(
     'SELECT id, email, display_name, role, is_active, created_at FROM admin_users ORDER BY created_at',
   ).all<AdminUser>()
@@ -36,33 +40,35 @@ adminManagementRouter.get('/admins', requireAdmin, requireOwner, async (c) => {
   const admins = result.results || []
 
   return c.html(
-    page(
-      'Admin List',
+    adminPage(
+      'Admins — RSVPex Admin',
       `
-      <h1>Admin Management</h1>
-      <p><a href="/rsvp/admin/admins/invite" class="button">+ Invite New Admin</a></p>
+      <div class="page-header">
+        <h1>Admin Management</h1>
+        <a href="/rsvp/admin/admins/invite" class="btn btn-primary">+ Invite New Admin</a>
+      </div>
 
-      <table style="width:100%; border-collapse:collapse; margin-top:1.5rem;">
+      <table>
         <thead>
-          <tr style="border-bottom:2px solid #ccc;">
-            <th style="text-align:left; padding:.5rem;">Email</th>
-            <th style="text-align:left; padding:.5rem;">Display Name</th>
-            <th style="text-align:center; padding:.5rem;">Role</th>
-            <th style="text-align:center; padding:.5rem;">Status</th>
-            <th style="text-align:center; padding:.5rem;">Actions</th>
+          <tr>
+            <th>Email</th>
+            <th>Display Name</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           ${admins
             .map(
               (admin) => `
-            <tr style="border-bottom:1px solid #eee;">
-              <td style="padding:.5rem;">${escHtml(admin.email)}</td>
-              <td style="padding:.5rem;">${admin.display_name ? escHtml(admin.display_name) : '—'}</td>
-              <td style="text-align:center; padding:.5rem;"><strong>${admin.role}</strong></td>
-              <td style="text-align:center; padding:.5rem;">${admin.is_active ? '✓ Active' : '○ Inactive'}</td>
-              <td style="text-align:center; padding:.5rem;">
-                ${renderActions(admin, currentUserId)}
+            <tr>
+              <td>${escHtml(admin.email)}</td>
+              <td>${admin.display_name ? escHtml(admin.display_name) : '—'}</td>
+              <td><strong>${admin.role}</strong></td>
+              <td>${admin.is_active ? '✓ Active' : '○ Inactive'}</td>
+              <td>
+                ${renderActions(admin, currentUserId, csrfToken)}
               </td>
             </tr>
             `,
@@ -70,9 +76,8 @@ adminManagementRouter.get('/admins', requireAdmin, requireOwner, async (c) => {
             .join('')}
         </tbody>
       </table>
-
-      <p style="margin-top:2rem;"><a href="/rsvp/admin">Back to Dashboard</a></p>
       `,
+      csrfToken,
     ),
   )
 })
@@ -187,7 +192,7 @@ adminManagementRouter.post('/admins/:id/demote', requireAdmin, requireOwner, asy
 
 export default adminManagementRouter
 
-function renderActions(admin: AdminUser, currentUserId: string): string {
+function renderActions(admin: AdminUser, currentUserId: string, csrfToken: string): string {
   const isSelf = admin.id === currentUserId
   const isActive = admin.is_active === 1
   const isOwner = admin.role === 'owner'
@@ -201,12 +206,14 @@ function renderActions(admin: AdminUser, currentUserId: string): string {
   if (isActive) {
     actions += `
       <form method="POST" action="/rsvp/admin/admins/${admin.id}/deactivate" style="display:inline;">
+        ${csrfField(csrfToken)}
         <button type="submit" onclick="return confirm('Deactivate this admin? They will be logged out.')">Deactivate</button>
       </form>
     `
   } else {
     actions += `
       <form method="POST" action="/rsvp/admin/admins/${admin.id}/reactivate" style="display:inline;">
+        ${csrfField(csrfToken)}
         <button type="submit">Reactivate</button>
       </form>
     `
@@ -215,40 +222,18 @@ function renderActions(admin: AdminUser, currentUserId: string): string {
   if (isOwner) {
     actions += `
       <form method="POST" action="/rsvp/admin/admins/${admin.id}/demote" style="display:inline;">
+        ${csrfField(csrfToken)}
         <button type="submit" onclick="return confirm('Demote to editor?')">Demote</button>
       </form>
     `
   } else {
     actions += `
       <form method="POST" action="/rsvp/admin/admins/${admin.id}/promote" style="display:inline;">
+        ${csrfField(csrfToken)}
         <button type="submit" onclick="return confirm('Promote to owner?')">Promote</button>
       </form>
     `
   }
 
   return actions
-}
-
-function page(title: string, body: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escHtml(title)} — RSVPex Admin</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { margin-top: 0; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #eee; }
-    th { background: #f5f5f5; font-weight: bold; border-bottom: 2px solid #ccc; }
-    button { padding: 0.4rem 0.8rem; margin: 0.2rem; font-size: 0.9rem; cursor: pointer; }
-    .button { display: inline-block; padding: 0.75rem 1.5rem; background: #0066cc; color: white; text-decoration: none; border-radius: 4px; }
-    .button:hover { background: #0052a3; }
-    a { color: #0066cc; }
-    form { display: inline; }
-  </style>
-</head>
-<body>${body}</body>
-</html>`
 }

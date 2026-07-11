@@ -39,17 +39,19 @@ export async function createInvite(
 
 /**
  * Consumes an admin invite token.
- * Returns { email } on success, null if token is invalid, expired, or already used.
+ * Returns { email, role } on success, null if token is invalid, expired, or already used.
  * On success, marks the invite as used (used_at = now).
  *
  * Uses a single conditional UPDATE (C-12 pattern): check and write happen atomically
  * at the D1 API layer, preventing two concurrent calls with the same token both
- * succeeding.
+ * succeeding. The follow-up SELECT is keyed by token_hash (not email — mirrors
+ * consumeResetToken's token_hash lookup in adminAuth.ts) so a second invite sent
+ * to the same email address can never make this resolve to the wrong role.
  */
 export async function consumeInvite(
   db: D1Database,
   rawToken: string,
-): Promise<{ email: string } | null> {
+): Promise<{ email: string; role: 'owner' | 'editor' } | null> {
   const tokenHash = await hashToken(rawToken)
   const now = new Date().toISOString()
 
@@ -64,11 +66,11 @@ export async function consumeInvite(
 
   if (claim.meta.changes === 0) return null
 
-  // Fetch the email from the invite
+  // Fetch the email/role for the exact invite just consumed
   const row = await db
-    .prepare('SELECT email FROM admin_invites WHERE token_hash = ? LIMIT 1')
+    .prepare('SELECT email, role FROM admin_invites WHERE token_hash = ? LIMIT 1')
     .bind(tokenHash)
-    .first<{ email: string }>()
+    .first<{ email: string; role: 'owner' | 'editor' }>()
 
-  return row ? { email: row.email } : null
+  return row ? { email: row.email, role: row.role } : null
 }

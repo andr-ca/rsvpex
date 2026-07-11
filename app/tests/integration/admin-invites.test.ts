@@ -45,6 +45,37 @@ async function adminLogin(email: string, password: string): Promise<string> {
   return match?.[1] ?? ''
 }
 
+/** Fetch a CSRF token by doing a GET to an admin page and extracting the csrf_token cookie. */
+async function getCsrfToken(sessionCookie: string): Promise<string> {
+  const res = await app.fetch(
+    new Request('http://localhost/rsvp/admin/', {
+      headers: { Cookie: sessionCookie },
+    }),
+    env,
+  )
+  const setCookieHeader = res.headers.get('Set-Cookie') ?? ''
+  const match = setCookieHeader.match(/csrf_token=([^;]+)/)
+  return match?.[1] ?? ''
+}
+
+/** POST to /rsvp/admin/admins/invite (an authenticated, CSRF-protected route) as the given session. */
+async function postInvite(sessionId: string, body: URLSearchParams): Promise<Response> {
+  const sessionCookie = `session_id=${sessionId}`
+  const csrfToken = await getCsrfToken(sessionCookie)
+  return app.fetch(
+    new Request('http://localhost/rsvp/admin/admins/invite', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Cookie: `${sessionCookie}; csrf_token=${csrfToken}`,
+        'X-CSRF-Token': csrfToken,
+      },
+      body: body.toString(),
+    }),
+    env,
+  )
+}
+
 describe('GET /rsvp/admin/admins/invite', () => {
   it('returns 200 with invite form (Owner only)', async () => {
     const admin = await seedAdmin(env.DB, { role: 'owner' })
@@ -72,10 +103,7 @@ describe('GET /rsvp/admin/admins/invite', () => {
   })
 
   it('redirects to login if not authenticated', async () => {
-    const res = await app.fetch(
-      new Request('http://localhost/rsvp/admin/admins/invite'),
-      env,
-    )
+    const res = await app.fetch(new Request('http://localhost/rsvp/admin/admins/invite'), env)
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toContain('/login')
   })
@@ -89,17 +117,7 @@ describe('POST /rsvp/admin/admins/invite', () => {
       email: 'newinvite@example.com',
       role: 'editor',
     })
-    const res = await app.fetch(
-      new Request('http://localhost/rsvp/admin/admins/invite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
-    )
+    const res = await postInvite(sessionId, body)
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('/rsvp/admin/invite/accept')
@@ -112,17 +130,7 @@ describe('POST /rsvp/admin/admins/invite', () => {
       email: admin.email,
       role: 'editor',
     })
-    const res = await app.fetch(
-      new Request('http://localhost/rsvp/admin/admins/invite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
-    )
+    const res = await postInvite(sessionId, body)
     expect(res.status).toBe(409)
   })
 
@@ -133,17 +141,7 @@ describe('POST /rsvp/admin/admins/invite', () => {
       email: 'newemail@example.com',
       role: 'editor',
     })
-    const res = await app.fetch(
-      new Request('http://localhost/rsvp/admin/admins/invite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
-    )
+    const res = await postInvite(sessionId, body)
     expect(res.status).toBe(403)
   })
 })
@@ -168,24 +166,14 @@ describe('POST /rsvp/admin/invite/accept', () => {
       email: 'acceptme@example.com',
       role: 'editor',
     })
-    const inviteRes = await app.fetch(
-      new Request('http://localhost/rsvp/admin/admins/invite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: inviteBody.toString(),
-      }),
-      env,
-    )
+    const inviteRes = await postInvite(sessionId, inviteBody)
     const inviteHtml = await inviteRes.text()
     const tokenMatch = inviteHtml.match(/token=([a-f0-9-]+)/)
     const token = tokenMatch?.[1]
 
     if (!token) throw new Error('No token found in invite response')
 
-    // Accept the invite
+    // Accept the invite — this route is CSRF-exempt (pre-auth, token is the security control)
     const acceptBody = new URLSearchParams({
       token,
       password: 'new-password-123456',
@@ -202,9 +190,7 @@ describe('POST /rsvp/admin/invite/accept', () => {
     expect(acceptRes.headers.get('location')).toContain('/login')
 
     // Verify admin was created with correct role
-    const newAdmin = await env.DB.prepare(
-      'SELECT id, role FROM admin_users WHERE email = ?',
-    )
+    const newAdmin = await env.DB.prepare('SELECT id, role FROM admin_users WHERE email = ?')
       .bind('acceptme@example.com')
       .first<{ id: string; role: string }>()
     expect(newAdmin?.role).toBe('editor')
@@ -243,17 +229,7 @@ describe('POST /rsvp/admin/invite/accept', () => {
       email: 'owner-invite@example.com',
       role: 'owner',
     })
-    const inviteRes = await app.fetch(
-      new Request('http://localhost/rsvp/admin/admins/invite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: inviteBody.toString(),
-      }),
-      env,
-    )
+    const inviteRes = await postInvite(sessionId, inviteBody)
     const inviteHtml = await inviteRes.text()
     const tokenMatch = inviteHtml.match(/token=([a-f0-9-]+)/)
     const token = tokenMatch?.[1]
@@ -276,9 +252,7 @@ describe('POST /rsvp/admin/invite/accept', () => {
     expect(acceptRes.status).toBe(303)
 
     // Verify admin was created with owner role
-    const newAdmin = await env.DB.prepare(
-      'SELECT role FROM admin_users WHERE email = ?',
-    )
+    const newAdmin = await env.DB.prepare('SELECT role FROM admin_users WHERE email = ?')
       .bind('owner-invite@example.com')
       .first<{ role: string }>()
     expect(newAdmin?.role).toBe('owner')

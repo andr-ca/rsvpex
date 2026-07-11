@@ -54,14 +54,7 @@ adminInviteAcceptRouter.post('/invite/accept', adminAuthRateLimit(), async (c) =
     return c.json({ error: 'invite_expired_or_invalid' }, 410)
   }
 
-  // Fetch the role from admin_invites table
-  const inviteRow = await c.env.DB.prepare(
-    'SELECT role FROM admin_invites WHERE email = ? AND used_at IS NOT NULL LIMIT 1',
-  )
-    .bind(result.email)
-    .first<{ role: string }>()
-
-  const role = inviteRow?.role ?? 'editor'
+  const { email, role } = result
   const passwordHash = await hashPassword(password, c.env.ARGON2_PEPPER)
   const id = crypto.randomUUID()
 
@@ -70,7 +63,7 @@ adminInviteAcceptRouter.post('/invite/accept', adminAuthRateLimit(), async (c) =
     `INSERT INTO admin_users (id, email, password_hash, role, is_active)
      SELECT ?, ?, ?, ?, 1 WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE email = ?)`,
   )
-    .bind(id, result.email, passwordHash, role, result.email)
+    .bind(id, email, passwordHash, role, email)
     .run()
 
   if (insertResult.meta.changes === 0) {

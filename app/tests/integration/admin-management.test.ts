@@ -45,6 +45,37 @@ async function adminLogin(email: string, password: string): Promise<string> {
   return match?.[1] ?? ''
 }
 
+/** Fetch a CSRF token by doing a GET to an admin page and extracting the csrf_token cookie. */
+async function getCsrfToken(sessionCookie: string): Promise<string> {
+  const res = await app.fetch(
+    new Request('http://localhost/rsvp/admin/', {
+      headers: { Cookie: sessionCookie },
+    }),
+    env,
+  )
+  const setCookieHeader = res.headers.get('Set-Cookie') ?? ''
+  const match = setCookieHeader.match(/csrf_token=([^;]+)/)
+  return match?.[1] ?? ''
+}
+
+/** POST to an admin mutating route with the session cookie + matching CSRF cookie/header. */
+async function postAsAdmin(url: string, sessionId: string): Promise<Response> {
+  const sessionCookie = `session_id=${sessionId}`
+  const csrfToken = await getCsrfToken(sessionCookie)
+  return app.fetch(
+    new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Cookie: `${sessionCookie}; csrf_token=${csrfToken}`,
+        'X-CSRF-Token': csrfToken,
+      },
+      body: '',
+    }),
+    env,
+  )
+}
+
 describe('GET /rsvp/admin/admins', () => {
   it('lists all admins (Owner only)', async () => {
     const owner = await seedAdmin(env.DB, { role: 'owner' })
@@ -77,10 +108,7 @@ describe('GET /rsvp/admin/admins', () => {
   })
 
   it('redirects to login if not authenticated', async () => {
-    const res = await app.fetch(
-      new Request('http://localhost/rsvp/admin/admins'),
-      env,
-    )
+    const res = await app.fetch(new Request('http://localhost/rsvp/admin/admins'), env)
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toContain('/login')
   })
@@ -92,24 +120,14 @@ describe('POST /rsvp/admin/admins/:id/deactivate', () => {
     const target = await seedAdmin(env.DB, { role: 'editor' })
     const sessionId = await adminLogin(owner.email, owner.password)
 
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${target.id}/deactivate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${target.id}/deactivate`,
+      sessionId,
     )
     expect(res.status).toBe(303)
 
     // Verify deactivated
-    const deactivated = await env.DB.prepare(
-      'SELECT is_active FROM admin_users WHERE id = ?',
-    )
+    const deactivated = await env.DB.prepare('SELECT is_active FROM admin_users WHERE id = ?')
       .bind(target.id)
       .first<{ is_active: number }>()
     expect(deactivated?.is_active).toBe(0)
@@ -119,17 +137,9 @@ describe('POST /rsvp/admin/admins/:id/deactivate', () => {
     const owner = await seedAdmin(env.DB, { role: 'owner' })
     const sessionId = await adminLogin(owner.email, owner.password)
 
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${owner.id}/deactivate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${owner.id}/deactivate`,
+      sessionId,
     )
     expect(res.status).toBe(400)
   })
@@ -144,17 +154,9 @@ describe('POST /rsvp/admin/admins/:id/deactivate', () => {
       .bind(otherOwner.id)
       .run()
 
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${onlyOwner.id}/deactivate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${onlyOwner.id}/deactivate`,
+      sessionId,
     )
     expect(res.status).toBe(400)
   })
@@ -170,17 +172,9 @@ describe('POST /rsvp/admin/admins/:id/deactivate', () => {
     expect(sessionExists).toBeTruthy()
 
     // Deactivate the target
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${target.id}/deactivate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${ownerSessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${target.id}/deactivate`,
+      ownerSessionId,
     )
     expect(res.status).toBe(303)
 
@@ -196,24 +190,14 @@ describe('POST /rsvp/admin/admins/:id/reactivate', () => {
     const target = await seedAdmin(env.DB, { role: 'editor', is_active: 0 })
     const sessionId = await adminLogin(owner.email, owner.password)
 
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${target.id}/reactivate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${target.id}/reactivate`,
+      sessionId,
     )
     expect(res.status).toBe(303)
 
     // Verify reactivated
-    const reactivated = await env.DB.prepare(
-      'SELECT is_active FROM admin_users WHERE id = ?',
-    )
+    const reactivated = await env.DB.prepare('SELECT is_active FROM admin_users WHERE id = ?')
       .bind(target.id)
       .first<{ is_active: number }>()
     expect(reactivated?.is_active).toBe(1)
@@ -226,24 +210,14 @@ describe('POST /rsvp/admin/admins/:id/promote', () => {
     const editor = await seedAdmin(env.DB, { role: 'editor' })
     const sessionId = await adminLogin(owner.email, owner.password)
 
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${editor.id}/promote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${editor.id}/promote`,
+      sessionId,
     )
     expect(res.status).toBe(303)
 
     // Verify promoted
-    const promoted = await env.DB.prepare(
-      'SELECT role FROM admin_users WHERE id = ?',
-    )
+    const promoted = await env.DB.prepare('SELECT role FROM admin_users WHERE id = ?')
       .bind(editor.id)
       .first<{ role: string }>()
     expect(promoted?.role).toBe('owner')
@@ -253,17 +227,9 @@ describe('POST /rsvp/admin/admins/:id/promote', () => {
     const owner = await seedAdmin(env.DB, { role: 'owner' })
     const sessionId = await adminLogin(owner.email, owner.password)
 
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${owner.id}/promote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${owner.id}/promote`,
+      sessionId,
     )
     expect(res.status).toBe(400)
   })
@@ -275,24 +241,14 @@ describe('POST /rsvp/admin/admins/:id/demote', () => {
     const owner2 = await seedAdmin(env.DB, { role: 'owner' })
     const sessionId = await adminLogin(owner1.email, owner1.password)
 
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${owner2.id}/demote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${owner2.id}/demote`,
+      sessionId,
     )
     expect(res.status).toBe(303)
 
     // Verify demoted
-    const demoted = await env.DB.prepare(
-      'SELECT role FROM admin_users WHERE id = ?',
-    )
+    const demoted = await env.DB.prepare('SELECT role FROM admin_users WHERE id = ?')
       .bind(owner2.id)
       .first<{ role: string }>()
     expect(demoted?.role).toBe('editor')
@@ -302,17 +258,9 @@ describe('POST /rsvp/admin/admins/:id/demote', () => {
     const owner = await seedAdmin(env.DB, { role: 'owner' })
     const sessionId = await adminLogin(owner.email, owner.password)
 
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${owner.id}/demote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${owner.id}/demote`,
+      sessionId,
     )
     expect(res.status).toBe(400)
   })
@@ -327,17 +275,9 @@ describe('POST /rsvp/admin/admins/:id/demote', () => {
       .bind(otherOwner.id)
       .run()
 
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${onlyOwner.id}/demote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${sessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${onlyOwner.id}/demote`,
+      sessionId,
     )
     expect(res.status).toBe(400)
   })
@@ -353,17 +293,9 @@ describe('POST /rsvp/admin/admins/:id/demote', () => {
     expect(sessionExists).toBeTruthy()
 
     // Demote the owner2
-    const body = new URLSearchParams({})
-    const res = await app.fetch(
-      new Request(`http://localhost/rsvp/admin/admins/${owner2.id}/demote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Cookie: `session_id=${owner1SessionId}`,
-        },
-        body: body.toString(),
-      }),
-      env,
+    const res = await postAsAdmin(
+      `http://localhost/rsvp/admin/admins/${owner2.id}/demote`,
+      owner1SessionId,
     )
     expect(res.status).toBe(303)
 
