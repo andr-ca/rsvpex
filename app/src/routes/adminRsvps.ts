@@ -22,6 +22,8 @@ import { revokeToken } from '../domain/rsvpEdit'
 import { requireAdmin } from '../middleware/requireAdmin'
 import { writeAuditLog, buildDiff, redactPii } from '../domain/audit'
 import { escHtml, adminPage, csrfField } from '../views/layout'
+import { verifyEventOwnership } from '../domain/authorization'
+import { getAdminRole } from '../domain/adminAuth'
 
 /** Fire-and-forget audit log write; ignores errors and missing ExecutionContext. */
 function fireAuditLog(
@@ -45,6 +47,12 @@ adminRsvpsRouter.use('/rsvp/admin/events/*', requireAdmin)
 adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   const stats = await getEventStats(c.env.DB, event.id)
   const csrfToken = c.get('csrfToken') ?? ''
 
@@ -177,6 +185,12 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps', async (c) => {
 adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   const rsvp = await getRsvp(c.env.DB, c.req.param('rsvpId'))
   if (!rsvp || rsvp.event_id !== event.id) return c.notFound()
   const stats = await getEventStats(c.env.DB, event.id)
@@ -212,6 +226,12 @@ adminRsvpsRouter.get('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => {
 adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/edit', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   const rsvp = await getRsvp(c.env.DB, c.req.param('rsvpId'))
   if (!rsvp || rsvp.event_id !== event.id) return c.notFound()
 
@@ -301,6 +321,12 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/revoke-token', async
 adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/promote', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   const result = await promoteFromWaitlist(c.env.DB, c.req.param('rsvpId'))
   if (result.success) {
     fireAuditLog(
@@ -322,6 +348,12 @@ adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/promote', async (c) 
 adminRsvpsRouter.post('/rsvp/admin/events/:id/rsvps/:rsvpId/delete', async (c) => {
   const event = await getEvent(c.env.DB, c.req.param('id'))
   if (!event) return c.notFound()
+
+  // Verify event ownership for hosts
+  const role = await getAdminRole(c.env.DB, c.var.adminUserId)
+  const owns = await verifyEventOwnership(c.env.DB, event.id, c.var.adminUserId, role)
+  if (!owns) return c.notFound()
+
   const rsvpId = c.req.param('rsvpId')
   await deleteRsvp(c.env.DB, rsvpId)
   fireAuditLog(
