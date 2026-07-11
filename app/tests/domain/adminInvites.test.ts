@@ -13,7 +13,9 @@ describe('createInvite', () => {
     expect(rawToken.length).toBeGreaterThan(0)
 
     // Verify tokenHash is in DB
-    const row = await env.DB.prepare('SELECT token_hash, expires_at, role FROM admin_invites WHERE email = ?')
+    const row = await env.DB.prepare(
+      'SELECT token_hash, expires_at, role FROM admin_invites WHERE email = ?',
+    )
       .bind('newadmin@example.com')
       .first<{ token_hash: string; expires_at: string; role: string }>()
     expect(row?.token_hash).toBeTruthy()

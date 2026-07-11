@@ -121,9 +121,7 @@ adminManagementRouter.post('/admins/:id/reactivate', requireAdmin, requireOwner,
     return c.json({ error: 'cannot_reactivate_self' }, 400)
   }
 
-  const admin = await c.env.DB.prepare('SELECT id FROM admin_users WHERE id = ?')
-    .bind(id)
-    .first()
+  const admin = await c.env.DB.prepare('SELECT id FROM admin_users WHERE id = ?').bind(id).first()
   if (!admin) return c.json({ error: 'not_found' }, 404)
 
   await c.env.DB.prepare('UPDATE admin_users SET is_active = 1 WHERE id = ?').bind(id).run()
@@ -147,9 +145,7 @@ adminManagementRouter.post('/admins/:id/promote', requireAdmin, requireOwner, as
     return c.json({ error: 'already_owner' }, 400)
   }
 
-  await c.env.DB.prepare('UPDATE admin_users SET role = ? WHERE id = ?')
-    .bind('owner', id)
-    .run()
+  await c.env.DB.prepare('UPDATE admin_users SET role = ? WHERE id = ?').bind('owner', id).run()
 
   return c.redirect('/rsvp/admin/admins', 303)
 })
@@ -182,9 +178,7 @@ adminManagementRouter.post('/admins/:id/demote', requireAdmin, requireOwner, asy
     }
   }
 
-  await c.env.DB.prepare('UPDATE admin_users SET role = ? WHERE id = ?')
-    .bind('editor', id)
-    .run()
+  await c.env.DB.prepare('UPDATE admin_users SET role = ? WHERE id = ?').bind('editor', id).run()
   await deleteAllSessionsForUser(c.env.DB, id)
 
   return c.redirect('/rsvp/admin/admins', 303)

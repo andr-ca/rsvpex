@@ -47,44 +47,50 @@ adminInviteRouter.get('/admins/invite', requireAdmin, requireOwner, (c) => {
   )
 })
 
-adminInviteRouter.post('/admins/invite', requireAdmin, requireOwner, adminAuthRateLimit(), async (c) => {
-  const body = await c.req.parseBody()
-  const parsed = inviteSchema.safeParse(body)
-  if (!parsed.success) {
-    return c.json({ error: 'validation_failed', issues: parsed.error.issues }, 400)
-  }
+adminInviteRouter.post(
+  '/admins/invite',
+  requireAdmin,
+  requireOwner,
+  adminAuthRateLimit(),
+  async (c) => {
+    const body = await c.req.parseBody()
+    const parsed = inviteSchema.safeParse(body)
+    if (!parsed.success) {
+      return c.json({ error: 'validation_failed', issues: parsed.error.issues }, 400)
+    }
 
-  const { email, role } = parsed.data
+    const { email, role } = parsed.data
 
-  // Check if email is already an admin
-  const existing = await c.env.DB.prepare('SELECT id FROM admin_users WHERE email = ?')
-    .bind(email.toLowerCase())
-    .first()
+    // Check if email is already an admin
+    const existing = await c.env.DB.prepare('SELECT id FROM admin_users WHERE email = ?')
+      .bind(email.toLowerCase())
+      .first()
 
-  if (existing) {
-    return c.json({ error: 'already_admin' }, 409)
-  }
+    if (existing) {
+      return c.json({ error: 'already_admin' }, 409)
+    }
 
-  const rawToken = await createInvite(c.env.DB, email.toLowerCase(), role, 10_080)
-  const baseUrl = c.env.DEPLOYMENT_DOMAIN ?? new URL(c.req.url).origin
-  const inviteUrl = `${baseUrl}/rsvp/admin/invite/accept?token=${rawToken}`
+    const rawToken = await createInvite(c.env.DB, email.toLowerCase(), role, 10_080)
+    const baseUrl = c.env.DEPLOYMENT_DOMAIN ?? new URL(c.req.url).origin
+    const inviteUrl = `${baseUrl}/rsvp/admin/invite/accept?token=${rawToken}`
 
-  await sendInviteEmail(c.env, email, inviteUrl)
+    await sendInviteEmail(c.env, email, inviteUrl)
 
-  return c.html(
-    adminPage(
-      'Invite Sent — RSVPex Admin',
-      `
+    return c.html(
+      adminPage(
+        'Invite Sent — RSVPex Admin',
+        `
       <h1>Invite Sent</h1>
       <p>An invitation link has been sent to ${escHtml(email)}.</p>
       <p>If email isn't working, you can share this link directly:</p>
       <code style="word-break:break-all;">${escHtml(inviteUrl)}</code>
       <p style="margin-top:1.5rem;"><a href="/rsvp/admin/admins">Back to Admin List</a></p>
       `,
-      c.get('csrfToken'),
-    ),
-  )
-})
+        c.get('csrfToken'),
+      ),
+    )
+  },
+)
 
 export default adminInviteRouter
 
