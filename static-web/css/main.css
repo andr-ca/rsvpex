@@ -149,11 +149,73 @@ body {
   font-size: 0.85rem;
   color: var(--subhead);
   line-height: 1.7;
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
+}
+
+.event-live {
+  font-size: 0.85rem;
+  color: var(--subhead);
+  margin-bottom: 1.25rem;
+}
+
+.event-live strong { color: var(--ink); }
+
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--attending);
+  margin-right: 0.35rem;
+  vertical-align: middle;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1.75rem;
+}
+
+.btn-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.6rem 1.1rem;
+  border-radius: 4px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.btn-cta-primary {
+  background: var(--ink);
+  color: var(--cream);
+}
+
+.btn-cta-secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px solid var(--border);
+}
+
+.btn-cta:focus-visible {
+  outline: 2px solid var(--terracotta);
+  outline-offset: 2px;
 }
 
 /* ---------- Waitlist form ---------- */
 .waitlist-form { margin-bottom: 0.6rem; }
+
+.waitlist-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
 
 .form-row {
   display: flex;
@@ -169,6 +231,14 @@ body {
   .btn-submit {
     width: 100%;
     align-self: stretch;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .btn-cta {
+    width: 100%;
   }
 }
 
