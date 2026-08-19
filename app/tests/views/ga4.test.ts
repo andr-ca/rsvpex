@@ -11,7 +11,7 @@ describe('ga4Snippet', () => {
   })
 
   it('renders the GA4 loader only for a valid measurement ID', () => {
-    // G-ABC123 is a format fixture only, not a live measurement ID.
+    // Format fixture only — not a live GA4 property.
     const snippet = ga4Snippet('G-ABC123')
 
     expect(snippet).toContain('https://www.googletagmanager.com/gtag/js?id=G-ABC123')
