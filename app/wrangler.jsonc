@@ -78,6 +78,7 @@
   "vars": {
     "TURNSTILE_SITE_KEY": "0x4AAAAAADyl3LcpKCh2BO-G",
     "DEPLOYMENT_DOMAIN": "https://rsvpex.com",
+    "GA4_MEASUREMENT_ID": "",
     "ENVIRONMENT": "production"
   }
 }

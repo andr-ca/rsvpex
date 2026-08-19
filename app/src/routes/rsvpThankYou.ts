@@ -13,6 +13,7 @@
 import { Hono } from 'hono'
 import { getRsvpByToken } from '../domain/rsvpEdit'
 import { t, resolveLocale, type SupportedLocale } from '../i18n'
+import { ga4Snippet } from '../views/ga4'
 
 const thankYouRouter = new Hono<{ Bindings: Env }>()
 
@@ -29,11 +30,12 @@ type EventRow = {
 }
 
 thankYouRouter.get('/thank-you', async (c) => {
+  const ga4MeasurementId = c.env.GA4_MEASUREMENT_ID
   const rid = c.req.query('rid')
-  if (!rid) return c.html(renderError(t('thanks.missingRef', 'en'), 'en'), 400)
+  if (!rid) return c.html(renderError(t('thanks.missingRef', 'en'), 'en', ga4MeasurementId), 400)
 
   const rsvp = await getRsvpByToken(c.env.DB, rid)
-  if (!rsvp) return c.html(renderError(t('thanks.notFound', 'en'), 'en'), 404)
+  if (!rsvp) return c.html(renderError(t('thanks.notFound', 'en'), 'en', ga4MeasurementId), 404)
 
   const event = await c.env.DB.prepare(
     `SELECT slug, title, start_at, end_at, location_text, wishlist_url, timezone, questions, locale
@@ -42,11 +44,13 @@ thankYouRouter.get('/thank-you', async (c) => {
     .bind(rsvp.event_id)
     .first<EventRow>()
 
-  if (!event) return c.html(renderError(t('thanks.eventNotFound', 'en'), 'en'), 404)
+  if (!event) {
+    return c.html(renderError(t('thanks.eventNotFound', 'en'), 'en', ga4MeasurementId), 404)
+  }
 
   const locale = resolveLocale(event.locale, c.req.raw.headers.get('Accept-Language'))
 
-  return c.html(renderThankYou(rsvp, event, locale))
+  return c.html(renderThankYou(rsvp, event, locale, ga4MeasurementId))
 })
 
 // ── Renderers ─────────────────────────────────────────────────────────────────
@@ -57,6 +61,7 @@ function renderThankYou(
   rsvp: NonNullable<RsvpRow>,
   event: EventRow,
   locale: SupportedLocale,
+  ga4MeasurementId?: string,
 ): string {
   const dietary: Array<{ kind: string; value: string }> = JSON.parse(rsvp.dietary || '[]')
   const answers: Record<string, unknown> = JSON.parse(rsvp.answers || '{}')
@@ -142,24 +147,32 @@ function renderThankYou(
     </div>
   `,
     locale,
+    ga4MeasurementId,
   )
 }
 
-function renderError(msg: string, locale: SupportedLocale): string {
+function renderError(msg: string, locale: SupportedLocale, ga4MeasurementId?: string): string {
   return page(
     `${t('thanks.error', locale)} — RSVPex`,
     `<h1>${escHtml(t('thanks.error', locale))}</h1><p>${escHtml(msg)}</p>`,
     locale,
+    ga4MeasurementId,
   )
 }
 
-function page(title: string, body: string, locale: SupportedLocale = 'en'): string {
+function page(
+  title: string,
+  body: string,
+  locale: SupportedLocale = 'en',
+  ga4MeasurementId?: string,
+): string {
   return `<!DOCTYPE html>
 <html lang="${locale}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escHtml(title)}</title>
+  ${ga4Snippet(ga4MeasurementId)}
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }

@@ -67,6 +67,18 @@ jobs:
 
           sed -i "s/{{WEB3FORMS_ACCESS_KEY}}/${ESCAPED_KEY}/g" static-web-dist/index.html
 
+      - name: Inject optional GA4 measurement ID
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          GA4_MEASUREMENT_ID: ${{ vars.GA4_MEASUREMENT_ID || secrets.GA4_MEASUREMENT_ID }}
+        run: |
+          ESCAPED_ID=${GA4_MEASUREMENT_ID//\\/\\\\}
+          ESCAPED_ID=${ESCAPED_ID//&/\\&}
+          ESCAPED_ID=${ESCAPED_ID//\//\\/}
+
+          sed -i "s/{{GA4_MEASUREMENT_ID}}/${ESCAPED_ID}/g" static-web-dist/index.html
+          sed -i "s/{{GA4_MEASUREMENT_ID}}/${ESCAPED_ID}/g" static-web-dist/thank-you.html
+
       - name: Ensure Cloudflare Pages project exists
         if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         env:
