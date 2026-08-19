@@ -7,6 +7,27 @@
   <meta name="robots" content="noindex">
   <link rel="icon" type="image/svg+xml" href="/images/favicon/favicon.svg">
   <link rel="stylesheet" href="/css/main.css">
+  <meta name="ga4-measurement-id" content="{{GA4_MEASUREMENT_ID}}">
+  <script>
+    (() => {
+      const measurementId =
+        document
+          .querySelector('meta[name="ga4-measurement-id"]')
+          ?.getAttribute('content')
+          ?.trim() ?? ''
+      if (!/^G-[A-Z0-9]+$/.test(measurementId)) return
+      window.dataLayer = window.dataLayer || []
+      window.gtag = function gtag() {
+        window.dataLayer.push(arguments)
+      }
+      window.gtag('js', new Date())
+      window.gtag('config', measurementId)
+      const script = document.createElement('script')
+      script.async = true
+      script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`
+      document.head.appendChild(script)
+    })()
+  </script>
 </head>
 <body>
 

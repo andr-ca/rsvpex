@@ -17,6 +17,7 @@ declare namespace Cloudflare {
 		TWILIO_AUTH_TOKEN?: string;
 		TWILIO_FROM_NUMBER?: string;
 		DEPLOYMENT_DOMAIN?: string;
+		GA4_MEASUREMENT_ID?: string;
 		SETUP_SECRET?: string;
 		IP_HASH_KEY?: string;
 		ARGON2_PEPPER?: string;

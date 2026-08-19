@@ -18,6 +18,7 @@ import { getRsvpByToken } from '../domain/rsvpEdit'
 import { timingSafeEqual } from '../domain/tokens'
 import { t, resolveLocale, type SupportedLocale } from '../i18n'
 import { parseQuestionDefs, questionFieldName, type QuestionDef } from '../domain/questions'
+import { ga4Snippet } from '../views/ga4'
 
 const rsvpFormRouter = new Hono<{ Bindings: Env }>()
 
@@ -67,6 +68,7 @@ type RsvpEditRow = {
 rsvpFormRouter.get('/:slug', async (c) => {
   const slug = c.req.param('slug')
   const accessToken = c.req.query('t') ?? null
+  const ga4MeasurementId = c.env.GA4_MEASUREMENT_ID
 
   const event = await c.env.DB.prepare(
     `SELECT id, title, host_name, description_html, slug, visibility,
@@ -83,7 +85,7 @@ rsvpFormRouter.get('/:slug', async (c) => {
     .first<EventRow>()
 
   if (!event) {
-    return c.html(renderNotFound('en'), 404)
+    return c.html(renderNotFound('en', ga4MeasurementId), 404)
   }
 
   const locale = resolveLocale(event.locale, c.req.raw.headers.get('Accept-Language'))
@@ -92,21 +94,21 @@ rsvpFormRouter.get('/:slug', async (c) => {
   // ── Visibility check ──────────────────────────────────────────────────────
   if (event.visibility === 'private') {
     if (!accessToken || !event.access_token || !timingSafeEqual(accessToken, event.access_token)) {
-      return c.html(renderAccessDenied(event.title, locale), 403)
+      return c.html(renderAccessDenied(event.title, locale, ga4MeasurementId), 403)
     }
     // GAP-06: expired token
     if (event.access_token_expires_at && event.access_token_expires_at < now) {
-      return c.html(renderLinkExpired(event.title, locale), 403)
+      return c.html(renderLinkExpired(event.title, locale, ga4MeasurementId), 403)
     }
   }
 
   // ── Time-window check ─────────────────────────────────────────────────────
   if (event.opens_at && event.opens_at > now) {
-    return c.html(renderNotOpenYet(event, locale), 200)
+    return c.html(renderNotOpenYet(event, locale, ga4MeasurementId), 200)
   }
 
   if (event.closes_at && event.closes_at < now) {
-    return c.html(renderClosed(event.title, locale), 410)
+    return c.html(renderClosed(event.title, locale, ga4MeasurementId), 410)
   }
 
   // ── Happy path: render form ───────────────────────────────────────────────
@@ -115,23 +117,24 @@ rsvpFormRouter.get('/:slug', async (c) => {
   if (rid) {
     const rsvp = await getRsvpByToken(c.env.DB, rid)
     if (!rsvp || rsvp.event_id !== event.id) {
-      return c.html(renderInvalidEditLink(locale), 403)
+      return c.html(renderInvalidEditLink(locale, ga4MeasurementId), 403)
     }
-    return c.html(renderEditForm(event, rsvp as RsvpEditRow, rid, locale))
+    return c.html(renderEditForm(event, rsvp as RsvpEditRow, rid, locale, ga4MeasurementId))
   }
 
   // ── New RSVP: render blank form ───────────────────────────────────────────
-  return c.html(renderForm(event, accessToken, locale, c.env.TURNSTILE_SITE_KEY))
+  return c.html(renderForm(event, accessToken, locale, c.env.TURNSTILE_SITE_KEY, ga4MeasurementId))
 })
 
 // ── HTML renderers ────────────────────────────────────────────────────────────
 
-function renderInvalidEditLink(locale: SupportedLocale): string {
+function renderInvalidEditLink(locale: SupportedLocale, ga4MeasurementId?: string): string {
   return page(
     t('edit.invalidLink', locale),
     `<h1>${escHtml(t('edit.invalidLink', locale))}</h1>
      <p>${escHtml(t('edit.invalidLinkMsg', locale))}</p>`,
     locale,
+    ga4MeasurementId,
   )
 }
 
@@ -140,6 +143,7 @@ function renderEditForm(
   rsvp: RsvpEditRow,
   rid: string,
   locale: SupportedLocale,
+  ga4MeasurementId?: string,
 ): string {
   const dietary: Array<{ kind: string; value: string }> = JSON.parse(rsvp.dietary || '[]')
   const questionDefs = parseQuestionDefs(event.questions)
@@ -219,18 +223,24 @@ function renderEditForm(
     </form>
   `,
     locale,
+    ga4MeasurementId,
   )
 }
 
-function renderNotFound(locale: SupportedLocale): string {
+function renderNotFound(locale: SupportedLocale, ga4MeasurementId?: string): string {
   return page(
     t('page.notFound', locale),
     `<h1>${escHtml(t('page.notFound', locale))}</h1><p>${escHtml(t('page.notFoundMsg', locale))}</p>`,
     locale,
+    ga4MeasurementId,
   )
 }
 
-function renderAccessDenied(title: string, locale: SupportedLocale): string {
+function renderAccessDenied(
+  title: string,
+  locale: SupportedLocale,
+  ga4MeasurementId?: string,
+): string {
   return page(
     t('page.accessDenied', locale),
     `
@@ -238,10 +248,15 @@ function renderAccessDenied(title: string, locale: SupportedLocale): string {
     <p>${escHtml(t('page.accessDeniedMsg', locale))}</p>
   `,
     locale,
+    ga4MeasurementId,
   )
 }
 
-function renderLinkExpired(title: string, locale: SupportedLocale): string {
+function renderLinkExpired(
+  title: string,
+  locale: SupportedLocale,
+  ga4MeasurementId?: string,
+): string {
   return page(
     t('page.linkExpired', locale),
     `
@@ -249,10 +264,15 @@ function renderLinkExpired(title: string, locale: SupportedLocale): string {
     <p>${escHtml(t('page.linkExpiredMsg', locale))}</p>
   `,
     locale,
+    ga4MeasurementId,
   )
 }
 
-function renderNotOpenYet(event: EventRow, locale: SupportedLocale): string {
+function renderNotOpenYet(
+  event: EventRow,
+  locale: SupportedLocale,
+  ga4MeasurementId?: string,
+): string {
   // opens_at is stored as true UTC (C-5 in recommendations.md) — an explicit
   // timeZone is required, otherwise this formats in the Workers runtime's
   // own zone (UTC) instead of the event's.
@@ -270,10 +290,11 @@ function renderNotOpenYet(event: EventRow, locale: SupportedLocale): string {
     ${opensDate ? `<p>${escHtml(t('page.openingOn', locale))} <strong>${escHtml(opensDate)}</strong>.</p>` : ''}
   `,
     locale,
+    ga4MeasurementId,
   )
 }
 
-function renderClosed(title: string, locale: SupportedLocale): string {
+function renderClosed(title: string, locale: SupportedLocale, ga4MeasurementId?: string): string {
   return page(
     t('page.closed', locale),
     `
@@ -281,6 +302,7 @@ function renderClosed(title: string, locale: SupportedLocale): string {
     <p>${escHtml(t('page.closedMsg', locale))}</p>
   `,
     locale,
+    ga4MeasurementId,
   )
 }
 
@@ -289,6 +311,7 @@ function renderForm(
   accessToken: string | null,
   locale: SupportedLocale,
   turnstileSiteKey: string,
+  ga4MeasurementId?: string,
 ): string {
   const isKids = Boolean(event.is_kids_event)
   const allowStatusChoice = Boolean(event.allow_status_choice)
@@ -352,6 +375,7 @@ function renderForm(
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   `,
     locale,
+    ga4MeasurementId,
   )
 }
 
@@ -550,13 +574,19 @@ function renderQuestionField(q: QuestionDef, currentValue?: unknown): string {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function page(title: string, body: string, locale: SupportedLocale = 'en'): string {
+function page(
+  title: string,
+  body: string,
+  locale: SupportedLocale = 'en',
+  ga4MeasurementId?: string,
+): string {
   return `<!DOCTYPE html>
 <html lang="${locale}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escHtml(title)} — RSVPex</title>
+  ${ga4Snippet(ga4MeasurementId)}
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
