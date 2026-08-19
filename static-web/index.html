@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RSVPex — RSVP Management Coming Soon</title>
-  <meta name="description" content="Beautiful RSVP management for events that matter. Dietary restrictions, gift registries, and guest lists — self-hosted and private.">
+  <title>RSVPex — Private RSVP management</title>
+  <meta name="description" content="Beautiful RSVP management for events that matter. Dietary restrictions, guest lists, and a live guest form — self-hosted and private.">
   <link rel="canonical" href="https://rsvpex.com">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="RSVPex — RSVP Management Coming Soon">
+  <meta property="og:title" content="RSVPex — Private RSVP management">
   <meta property="og:description" content="Beautiful RSVP management for events that matter. Self-hosted and private.">
   <meta property="og:url" content="https://rsvpex.com">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="RSVPex — RSVP Management Coming Soon">
+  <meta name="twitter:title" content="RSVPex — Private RSVP management">
   <meta name="twitter:description" content="Beautiful RSVP management for events that matter. Self-hosted and private.">
 
   <!-- Theme -->
@@ -35,7 +35,8 @@
     <nav class="site-nav" aria-label="Site navigation">
       <a href="/" class="nav-wordmark" aria-label="RSVPex home">RSVP<span>EX</span></a>
       <div class="nav-links">
-        <a href="/rsvp/admin/signup" class="nav-link">Sign Up as Host</a>
+        <a href="/rsvp/open-house" class="nav-link">RSVP</a>
+        <a href="/rsvp/admin/signup" class="nav-link">Host an event</a>
         <a href="/rsvp/admin/login" class="nav-link">Admin Login</a>
       </div>
     </nav>
@@ -45,9 +46,9 @@
     <!-- HERO -->
     <section class="hero" aria-labelledby="hero-headline">
 
-      <!-- Left: text + form -->
+      <!-- Left: text + live CTAs -->
       <div class="hero-content">
-        <p class="hero-eyebrow">Event RSVP Management</p>
+        <p class="hero-eyebrow">Live guest RSVP</p>
         <h1 class="hero-headline" id="hero-headline">
           Every guest.<br>
           <em>Every detail.</em><br>
@@ -56,8 +57,19 @@
         <div class="hero-rule" role="presentation"></div>
         <p class="hero-subheadline">
           Beautiful RSVP management for events that matter — dietary restrictions,
-          gift registries, and guest lists, all in one place. Self-hosted and private.
+          guest lists, and a real public form guests can submit today.
+          Self-hosted and private.
         </p>
+
+        <p class="event-live">
+          <span class="live-dot" aria-hidden="true"></span>
+          <strong>RSVPex open house</strong> — Sunday, September 20, 2026 · 6:00 PM ET · Online
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn-cta btn-cta-primary" href="/rsvp/open-house">RSVP now</a>
+          <a class="btn-cta btn-cta-secondary" href="/rsvp/admin/signup">Host your own event</a>
+        </div>
 
         <form
           action="https://api.web3forms.com/submit"
@@ -73,6 +85,8 @@
 
           <!-- Honeypot -->
           <input type="checkbox" name="botcheck" hidden tabindex="-1" aria-hidden="true">
+
+          <p class="waitlist-label">Want product updates instead?</p>
 
           <div class="form-row">
             <div class="form-field">
@@ -105,7 +119,7 @@
             </div>
 
             <button type="submit" class="btn-submit" id="submit-btn">
-              Join Waitlist
+              Get updates
             </button>
           </div>
 
@@ -119,23 +133,23 @@
       <div class="hero-card-wrap" aria-hidden="true">
         <div class="hero-card-circle"></div>
         <div class="hero-card" role="presentation">
-          <p class="hero-card-event-label">Summer Garden Party</p>
-          <p class="hero-card-count">42 guests confirmed</p>
+          <p class="hero-card-event-label">RSVPex Open House</p>
+          <p class="hero-card-count">RSVP open now</p>
           <div class="hero-card-rows">
             <div class="hero-card-row hero-card-row--attending">
               <span class="hero-card-dot dot-green"></span>
-              Sarah &amp; Tom — Attending (2)
+              Live guest form — dietary + party size
             </div>
             <div class="hero-card-row">
               <span class="hero-card-dot dot-amber"></span>
-              Dietary: <em>gluten-free (1)</em>
+              Host dashboard after you sign up
             </div>
             <div class="hero-card-row">
               <span class="hero-card-dot dot-terracotta"></span>
-              Gift registry linked
+              Your data stays on rsvpex.com
             </div>
           </div>
-          <p class="hero-card-footer">View full guest list →</p>
+          <p class="hero-card-footer">Open the guest form →</p>
         </div>
       </div>
 
