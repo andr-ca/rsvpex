@@ -123,9 +123,7 @@ rsvpFormRouter.get('/:slug', async (c) => {
   }
 
   // ── New RSVP: render blank form ───────────────────────────────────────────
-  return c.html(
-    renderForm(event, accessToken, locale, c.env.TURNSTILE_SITE_KEY, ga4MeasurementId),
-  )
+  return c.html(renderForm(event, accessToken, locale, c.env.TURNSTILE_SITE_KEY, ga4MeasurementId))
 })
 
 // ── HTML renderers ────────────────────────────────────────────────────────────
